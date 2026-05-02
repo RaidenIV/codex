@@ -2582,6 +2582,68 @@ function pickEnglishAuthor(authors){
   const list = Array.isArray(authors) ? authors : [authors];
   return list.map(englishText).find(Boolean) || '';
 }
+function languageCodes(doc){
+  const raw = doc?.language || doc?.languages || [];
+  return (Array.isArray(raw) ? raw : [raw])
+    .map(v => typeof v === 'string' ? v : (v?.key || v?.code || v?.name || ''))
+    .map(v => String(v).toLowerCase().replace('/languages/','').trim())
+    .filter(Boolean);
+}
+function hasEnglishLanguage(doc){
+  const codes = languageCodes(doc);
+  if (!codes.length) return true;
+  return codes.some(code => code === 'eng' || code === 'en' || code === 'english');
+}
+function isEnglishSearchResult(doc){
+  if (!doc) return false;
+  if (!hasEnglishLanguage(doc)) return false;
+  if (!englishText(doc.title || '')) return false;
+  const authors = doc.author_name || (doc.author ? [doc.author] : []);
+  return !authors.length || !!pickEnglishAuthor(authors);
+}
+function googleVolumeToSearchDoc(item){
+  const metadata = metadataFromGoogleVolume(item);
+  if (!metadata?.title) return null;
+  return {
+    title: metadata.title,
+    author_name: metadata.author ? [metadata.author] : [],
+    first_publish_year: metadata.year || null,
+    isbn: metadata.isbn ? [metadata.isbn] : [],
+    coverUrl: metadata.coverUrl || '',
+    number_of_pages_median: metadata.pages || null,
+    subject: metadata.genre ? [metadata.genre] : [],
+    language: ['eng'],
+    series: metadata.series ? [metadata.series] : [],
+    _source: 'Google Books',
+  };
+}
+function dedupeSearchDocs(docs){
+  const seen = new Set();
+  const out = [];
+  docs.forEach(doc => {
+    const key = `${normalizeMetadataTitle(doc?.title)}::${normalizeAuthor((doc?.author_name || [])[0] || doc?.author || '')}`;
+    if (!key.replace(/[:]/g,'') || seen.has(key)) return;
+    seen.add(key);
+    out.push(doc);
+  });
+  return out;
+}
+async function searchEnglishBooks(q){
+  const [olResult, googleResult] = await Promise.allSettled([
+    olSearch(q, 18),
+    googleBooksQuery(`intitle:${q}`, 12)
+  ]);
+  const olDocs = olResult.status === 'fulfilled' ? olResult.value : [];
+  const googleDocs = googleResult.status === 'fulfilled'
+    ? googleResult.value.map(googleVolumeToSearchDoc).filter(Boolean)
+    : [];
+  const docs = dedupeSearchDocs([...olDocs, ...googleDocs].filter(isEnglishSearchResult));
+  docs.sort((a,b) => metadataScore(b, q) - metadataScore(a, q));
+  if (!docs.length && olResult.status === 'rejected' && googleResult.status === 'rejected') {
+    throw new Error('Search failed');
+  }
+  return docs.slice(0, 10);
+}
 function pickGenre(subjects){
   if (!subjects || !subjects.length) return '';
   const blocked = /fictional|protected daisy|accessible book|internet archive|open library|large type|juvenile|translations/i;
@@ -3513,32 +3575,42 @@ $('#add-mode-seg').addEventListener('click', e => {
 });
 
 let searchTimer;
+let searchRequestToken = 0;
 $('#search-input').addEventListener('input', e => {
   clearTimeout(searchTimer);
   const q = e.target.value.trim();
-  if (q.length < 3){ $('#search-results').innerHTML = ''; return; }
+  if (q.length < 3){
+    searchRequestToken++;
+    $('#search-results').innerHTML = '';
+    return;
+  }
   searchTimer = setTimeout(() => doSearch(q), 350);
 });
 
 async function doSearch(q){
-  $('#search-results').innerHTML = `<div class="loading">Searching Open Library…</div>`;
+  const token = ++searchRequestToken;
+  const resultsBox = $('#search-results');
+  resultsBox.innerHTML = `<div class="loading">Searching English book sources…</div>`;
   try {
-    const docs = await olSearch(q);
-    if (!docs.length){ $('#search-results').innerHTML = `<div class="loading">No results.</div>`; return; }
-    $('#search-results').innerHTML = `<div class="results">` + docs.map((d,i) => `
+    const docs = await searchEnglishBooks(q);
+    if (token !== searchRequestToken) return;
+    if (!docs.length){ resultsBox.innerHTML = `<div class="loading">No English results found.</div>`; return; }
+    resultsBox.innerHTML = `<div class="results">` + docs.map((d,i) => `
       <div class="result-item" data-i="${i}">
         ${olCoverUrl(d) ? `<img src="${esc(olCoverUrl(d))}" onerror="this.style.visibility='hidden'">` : '<div style="width:36px;height:54px;background:var(--inset);border-radius:3px"></div>'}
         <div class="ri-info">
-          <div class="ri-title">${esc(d.title||'Untitled')}</div>
+          <div class="ri-title">${esc(englishText(d.title) || d.title || 'Untitled')}</div>
           <div class="ri-author">${esc(pickEnglishAuthor(d.author_name || []) || 'Unknown')}</div>
           <div class="ri-meta">${d.first_publish_year||''} ${d.number_of_pages_median ? '· '+d.number_of_pages_median+'pp':''}</div>
         </div>
       </div>`).join('') + `</div>`;
-    $('#search-results').querySelectorAll('.result-item').forEach(item => {
+    resultsBox.querySelectorAll('.result-item').forEach(item => {
       item.addEventListener('click', () => pickFromAPI(docs[parseInt(item.dataset.i)]));
     });
   } catch {
-    $('#search-results').innerHTML = `<div class="loading">Search failed (network or CORS). Try ISBN or manual entry.</div>`;
+    if (token !== searchRequestToken) return;
+    const hasResults = !!resultsBox.querySelector('.results');
+    if (!hasResults) resultsBox.innerHTML = `<div class="loading">Search failed. Try ISBN or manual entry.</div>`;
   }
 }
 
@@ -3567,7 +3639,7 @@ function pickFromAPI(doc){
   addDialog.close();
   openDetail({
     id: null,
-    title: doc.title || '',
+    title: englishText(doc.title) || doc.title || '',
     author: pickEnglishAuthor(doc.author_name || []) || '',
     pages: doc.number_of_pages_median || '',
     genre: pickGenre(doc.subject),
@@ -3934,7 +4006,7 @@ let seriesPickerBooks = [];
 let seriesConfirmBooks = [];
 
 function selectedSeriesBooks(){
-  return [...document.querySelectorAll('.series-book-check:checked')]
+  return [...document.querySelectorAll('.series-picker-check:checked')]
     .map(input => seriesPickerBooks[parseInt(input.dataset.i, 10)])
     .filter(Boolean);
 }
@@ -3961,7 +4033,7 @@ function renderSeriesPicker(books, series){
         </span>
       </label>`;
   }).join('');
-  $('#series-picker-list').querySelectorAll('.series-book-check').forEach(input => {
+  $('#series-picker-list').querySelectorAll('.series-picker-check').forEach(input => {
     input.addEventListener('change', updateSeriesSelectedCount);
   });
   updateSeriesSelectedCount();
@@ -3975,11 +4047,11 @@ function renderSeriesConfirmation(books){
 }
 
 $('#series-select-all').addEventListener('click', () => {
-  document.querySelectorAll('.series-book-check').forEach(input => input.checked = true);
+  document.querySelectorAll('.series-picker-check').forEach(input => input.checked = true);
   updateSeriesSelectedCount();
 });
 $('#series-clear-all').addEventListener('click', () => {
-  document.querySelectorAll('.series-book-check').forEach(input => input.checked = false);
+  document.querySelectorAll('.series-picker-check').forEach(input => input.checked = false);
   updateSeriesSelectedCount();
 });
 $('#series-review').addEventListener('click', () => {
