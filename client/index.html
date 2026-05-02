@@ -1860,6 +1860,12 @@ async function olSearch(q){
   if (!r.ok) throw new Error('Search failed');
   return (await r.json()).docs || [];
 }
+async function olTitleSearch(title){
+  const url = `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&limit=8&fields=title,author_name,first_publish_year,isbn,cover_i,number_of_pages_median,subject,key`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('Metadata lookup failed');
+  return (await r.json()).docs || [];
+}
 async function olISBN(isbn){
   const clean = isbn.replace(/[-\s]/g,'');
   const url = `https://openlibrary.org/api/books?bibkeys=ISBN:${clean}&format=json&jscmd=data`;
@@ -1890,6 +1896,80 @@ function pickGenre(subjects){
     .map(s => typeof s === 'string' ? s : (s?.name ?? ''))
     .filter(s => s && !s.includes(':') && s.length < 40);
   return (clean[0] || subjects[0] || '').toString();
+}
+function normalizeMetadataTitle(title){
+  return String(title || '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+function metadataScore(doc, title){
+  const wanted = normalizeMetadataTitle(title);
+  const found = normalizeMetadataTitle(doc?.title || '');
+  if (!wanted || !found) return 0;
+  let score = 0;
+  if (found === wanted) score += 100;
+  else if (found.startsWith(wanted) || wanted.startsWith(found)) score += 70;
+  else if (found.includes(wanted) || wanted.includes(found)) score += 45;
+  else {
+    const wantedWords = new Set(wanted.split(' ').filter(Boolean));
+    const foundWords = found.split(' ').filter(Boolean);
+    const overlap = foundWords.filter(w => wantedWords.has(w)).length;
+    score += overlap * 8;
+  }
+  if ((doc.author_name || []).length) score += 12;
+  if (doc.cover_i || (doc.isbn || []).length) score += 10;
+  if (doc.number_of_pages_median) score += 6;
+  if ((doc.subject || []).length) score += 6;
+  if (doc.first_publish_year) score += 4;
+  return score;
+}
+function metadataFromDoc(doc){
+  return {
+    author: (doc.author_name || [])[0] || '',
+    pages: doc.number_of_pages_median || null,
+    genre: pickGenre(doc.subject),
+    year: doc.first_publish_year || null,
+    isbn: (doc.isbn || [])[0] || '',
+    coverUrl: olCoverUrl(doc) || '',
+  };
+}
+async function fetchBookMetadata(title){
+  const docs = await olTitleSearch(title);
+  const ranked = docs
+    .map(doc => ({ doc, score: metadataScore(doc, title) }))
+    .filter(item => item.score >= 35)
+    .sort((a,b) => b.score - a.score);
+  return ranked.length ? metadataFromDoc(ranked[0].doc) : null;
+}
+function mergeMetadata(book, metadata){
+  if (!metadata) return book;
+  return {
+    ...book,
+    author: book.author || metadata.author || '',
+    pages: book.pages || metadata.pages || null,
+    genre: book.genre || metadata.genre || '',
+    year: book.year || metadata.year || null,
+    isbn: book.isbn || metadata.isbn || '',
+    coverUrl: book.coverUrl || metadata.coverUrl || '',
+  };
+}
+async function enrichBookMetadata(book){
+  if (!book?.title) return book;
+  try {
+    const metadata = await fetchBookMetadata(book.title);
+    return mergeMetadata(book, metadata);
+  } catch {
+    return book;
+  }
+}
+async function enrichBooksMetadata(books){
+  const enriched = [];
+  for (const book of books){
+    enriched.push(await enrichBookMetadata(book));
+  }
+  return enriched;
 }
 
 /* ==========================================================
@@ -2424,7 +2504,8 @@ function pickFromAPI(doc){
 $('#m-save').addEventListener('click', async () => {
   const title = $('#m-title').value.trim();
   if (!title){ toast('Title required'); return; }
-  await addBook({
+  toast('Gathering metadata…');
+  const book = await enrichBookMetadata({
     title,
     author: $('#m-author').value.trim(),
     pages: parseInt($('#m-pages').value) || null,
@@ -2434,6 +2515,7 @@ $('#m-save').addEventListener('click', async () => {
     startDate: '', finishDate: '', rating: null,
     isbn: '', coverUrl: '', notes: '', loan: null,
   });
+  await addBook(book);
   addDialog.close();
   toast('Added');
 });
@@ -2543,7 +2625,9 @@ $('#bulk-save').addEventListener('click', async () => {
     toast('No books found');
     return;
   }
-  await addBooks(books);
+  toast('Gathering metadata…');
+  const enrichedBooks = await enrichBooksMetadata(books);
+  await addBooks(enrichedBooks);
   addDialog.close();
   toast(`Added ${books.length} finished book${books.length === 1 ? '' : 's'}`);
 });
