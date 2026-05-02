@@ -68,6 +68,123 @@ function responseMeta() {
   return { mongoReady, mode: mongoReady ? 'mongodb' : 'memory' };
 }
 
+
+const OPEN_LIBRARY_SEARCH_FIELDS = [
+  'title',
+  'author_name',
+  'first_publish_year',
+  'isbn',
+  'cover_i',
+  'number_of_pages_median',
+  'subject',
+  'key',
+  'language',
+  'publisher',
+  'edition_count'
+];
+
+function clampNumber(value, fallback, min, max) {
+  const n = Number.parseInt(value, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function cleanPlainText(value, maxLength = 500) {
+  return String(value || '').trim().slice(0, maxLength);
+}
+
+async function fetchJson(url, label) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'CODEX/1.0 metadata proxy'
+      },
+      signal: controller.signal
+    });
+    const text = await response.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; }
+    catch { data = { raw: text }; }
+    if (!response.ok) {
+      const error = new Error(`${label} lookup failed (${response.status})`);
+      error.status = response.status >= 400 && response.status < 500 ? response.status : 502;
+      error.details = data;
+      throw error;
+    }
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+app.get('/api/metadata/openlibrary/search', async (req, res, next) => {
+  try {
+    const params = new URLSearchParams();
+    const q = cleanPlainText(req.query.q);
+    const title = cleanPlainText(req.query.title);
+    const author = cleanPlainText(req.query.author);
+
+    if (q) params.set('q', q);
+    if (title) params.set('title', title);
+    if (author) params.set('author', author);
+    params.set('limit', String(clampNumber(req.query.limit, 12, 1, 25)));
+    params.set('fields', OPEN_LIBRARY_SEARCH_FIELDS.join(','));
+
+    const data = await fetchJson(`https://openlibrary.org/search.json?${params.toString()}`, 'Open Library search');
+    res.json(data);
+  } catch (err) { next(err); }
+});
+
+app.get('/api/metadata/openlibrary/books', async (req, res, next) => {
+  try {
+    const rawBibkeys = cleanPlainText(req.query.bibkeys, 300);
+    const bibkeys = rawBibkeys
+      .split(',')
+      .map(key => key.trim())
+      .filter(key => /^ISBN:[0-9Xx-]+$/.test(key))
+      .slice(0, 10)
+      .join(',');
+
+    if (!bibkeys) return res.status(400).json({ error: 'Valid ISBN bibkeys are required' });
+
+    const params = new URLSearchParams({
+      bibkeys,
+      format: 'json',
+      jscmd: 'data'
+    });
+    const data = await fetchJson(`https://openlibrary.org/api/books?${params.toString()}`, 'Open Library ISBN');
+    res.json(data);
+  } catch (err) { next(err); }
+});
+
+app.get('/api/metadata/openlibrary/work/:workId', async (req, res, next) => {
+  try {
+    const workId = cleanPlainText(req.params.workId, 40).replace(/[^a-zA-Z0-9]/g, '');
+    if (!/^OL\d+M$/i.test(workId)) return res.status(400).json({ error: 'Valid Open Library work id is required' });
+    const data = await fetchJson(`https://openlibrary.org/works/${encodeURIComponent(workId)}.json`, 'Open Library work');
+    res.json(data);
+  } catch (err) { next(err); }
+});
+
+app.get('/api/metadata/google/books', async (req, res, next) => {
+  try {
+    const q = cleanPlainText(req.query.q);
+    if (!q) return res.json({ items: [] });
+
+    const params = new URLSearchParams({
+      q,
+      maxResults: String(clampNumber(req.query.maxResults, 12, 1, 25)),
+      printType: cleanPlainText(req.query.printType, 20) || 'books',
+      langRestrict: cleanPlainText(req.query.langRestrict, 5) || 'en'
+    });
+    const data = await fetchJson(`https://www.googleapis.com/books/v1/volumes?${params.toString()}`, 'Google Books');
+    res.json(data);
+  } catch (err) { next(err); }
+});
+
 async function saveStore(store, patch) {
   const updatedAt = new Date();
   if (!mongoReady) {

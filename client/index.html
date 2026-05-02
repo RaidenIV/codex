@@ -2253,26 +2253,23 @@ function databaseStatusText(result){
    OPEN LIBRARY API (unchanged from prior version)
    ========================================================== */
 async function olSearch(q){
-  const url = `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&language=eng&limit=10&fields=title,author_name,first_publish_year,isbn,cover_i,number_of_pages_median,subject,key,language,series,publisher,edition_count`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('Search failed');
-  return (await r.json()).docs || [];
+  const fields = 'title,author_name,first_publish_year,isbn,cover_i,number_of_pages_median,subject,key,language,publisher,edition_count';
+  const params = new URLSearchParams({ q, limit:'10', fields });
+  const data = await apiRequest(`/api/metadata/openlibrary/search?${params.toString()}`);
+  return data.docs || [];
 }
 async function olTitleSearch(title, author = ''){
-  const fields = 'title,author_name,first_publish_year,isbn,cover_i,number_of_pages_median,subject,key,language,series,publisher,edition_count';
-  const buildUrl = (includeLanguage = true) => {
+  const fields = 'title,author_name,first_publish_year,isbn,cover_i,number_of_pages_median,subject,key,language,publisher,edition_count';
+  const buildParams = includeAuthor => {
     const params = new URLSearchParams({ title, limit:'12', fields });
-    if (author) params.set('author', author);
-    if (includeLanguage) params.set('language', 'eng');
-    return `https://openlibrary.org/search.json?${params.toString()}`;
+    if (includeAuthor && author) params.set('author', author);
+    return params;
   };
-  let r = await fetch(buildUrl(true));
-  if (!r.ok) throw new Error('Metadata lookup failed');
-  let docs = (await r.json()).docs || [];
+  let data = await apiRequest(`/api/metadata/openlibrary/search?${buildParams(true).toString()}`);
+  let docs = data.docs || [];
   if (!docs.length && author){
-    r = await fetch(buildUrl(false));
-    if (!r.ok) throw new Error('Metadata lookup failed');
-    docs = (await r.json()).docs || [];
+    data = await apiRequest(`/api/metadata/openlibrary/search?${buildParams(false).toString()}`);
+    docs = data.docs || [];
   }
   return docs;
 }
@@ -2280,9 +2277,8 @@ async function googleBooksSearch(title, author = ''){
   const q = [title ? `intitle:${title}` : '', author ? `inauthor:${author}` : ''].filter(Boolean).join(' ');
   if (!q.trim()) return [];
   const params = new URLSearchParams({ q, maxResults:'12', printType:'books', langRestrict:'en' });
-  const r = await fetch(`https://www.googleapis.com/books/v1/volumes?${params.toString()}`);
-  if (!r.ok) throw new Error('Google Books lookup failed');
-  return (await r.json()).items || [];
+  const data = await apiRequest(`/api/metadata/google/books?${params.toString()}`);
+  return data.items || [];
 }
 function googleCoverUrl(info = {}){
   const links = info.imageLinks || {};
@@ -2342,10 +2338,8 @@ function mergeCrossReferencedMetadata(base, candidates){
 }
 async function olISBN(isbn){
   const clean = isbn.replace(/[-\s]/g,'');
-  const url = `https://openlibrary.org/api/books?bibkeys=ISBN:${clean}&format=json&jscmd=data`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('Lookup failed');
-  const j = await r.json();
+  const params = new URLSearchParams({ bibkeys:`ISBN:${clean}`, format:'json', jscmd:'data' });
+  const j = await apiRequest(`/api/metadata/openlibrary/books?${params.toString()}`);
   const book = j[`ISBN:${clean}`];
   if (!book) return null;
   return {
@@ -2362,9 +2356,9 @@ async function olISBN(isbn){
 async function olWorkDetails(key){
   if (!key || !key.startsWith('/works/')) return null;
   try {
-    const r = await fetch(`https://openlibrary.org${key}.json`);
-    if (!r.ok) return null;
-    return await r.json();
+    const workId = key.replace('/works/', '').replace(/[^a-zA-Z0-9]/g, '');
+    if (!workId) return null;
+    return await apiRequest(`/api/metadata/openlibrary/work/${encodeURIComponent(workId)}`);
   } catch {
     return null;
   }
