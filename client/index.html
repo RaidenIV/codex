@@ -1450,6 +1450,79 @@ body[data-theme="blueprint-light"] .detail-cover{
 }
 .series-actions[hidden]{display:none}
 .series-status{font-size:.76rem;color:var(--muted-2)}
+.series-picker-tools{
+  display:flex;
+  align-items:center;
+  gap:.5rem;
+  flex-wrap:wrap;
+  margin-bottom:.7rem;
+}
+.series-picker-count{
+  margin-left:auto;
+  font-family:var(--font-mono);
+  font-size:.68rem;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--muted-2);
+}
+.series-picker-list{
+  max-height:360px;
+  overflow-y:auto;
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  background:var(--inset);
+}
+.series-picker-item{
+  display:grid;
+  grid-template-columns:auto 3rem minmax(0,1fr);
+  gap:.7rem;
+  align-items:center;
+  padding:.6rem .75rem;
+  border-bottom:1px solid var(--line-soft);
+}
+.series-picker-item:last-child{border-bottom:none}
+.series-picker-check{width:1rem;height:1rem;accent-color:var(--accent);cursor:pointer}
+.series-picker-cover{
+  width:3rem;
+  aspect-ratio:2/3;
+  border-radius:6px;
+  background:var(--surface);
+  border:1px solid var(--line-soft);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  color:var(--muted-2);
+  font-family:var(--font-mono);
+  font-size:.58rem;
+}
+.series-picker-cover img{width:100%;height:100%;object-fit:contain;display:block}
+.series-picker-title{
+  color:var(--heading);
+  font-weight:700;
+  line-height:1.2;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.series-picker-meta{
+  color:var(--muted);
+  font-size:.8rem;
+  line-height:1.35;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.series-confirm-list{
+  max-height:280px;
+  overflow-y:auto;
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  background:var(--inset);
+  padding:.65rem .85rem;
+}
+.series-confirm-list ul{margin:.25rem 0;padding-left:1.1rem}
+.series-confirm-list li{margin:.35rem 0;color:var(--text)}
 
 
 /* Account info dialog */
@@ -1849,7 +1922,7 @@ body.control-panel-is-collapsed .add-book-wrap .btn{padding:0;width:var(--icon-b
         <div class="field"><label>Pages</label><input type="number" class="input" id="m-pages"></div>
       </div>
       <div class="row2">
-        <div class="field"><label>Genre</label><input type="text" class="input" id="m-genre"></div>
+        <div class="field"><label>Genre</label><select class="select" id="m-genre"></select></div>
         <div class="field"><label>Year</label><input type="number" class="input" id="m-year"></div>
       </div>
       <div class="field"><label>Status</label>
@@ -1896,12 +1969,12 @@ body.control-panel-is-collapsed .add-book-wrap .btn{padding:0;width:var(--icon-b
           <div class="field"><label>Pages</label><input type="number" class="input" id="d-pages"></div>
           <div class="field"><label>Year</label><input type="number" class="input" id="d-year"></div>
         </div>
-        <div class="field"><label>Genre</label><input type="text" class="input" id="d-genre"></div>
+        <div class="field"><label>Genre</label><select class="select" id="d-genre"></select></div>
         <div class="field">
           <label>Series / Collection</label>
           <input type="text" class="input" id="d-series">
           <div class="series-actions" id="series-actions" hidden>
-            <button class="btn small" id="d-series-add-all" type="button">Add All Books in Series</button>
+            <button class="btn small" id="d-series-add-all" type="button">Choose Series Books</button>
             <span class="series-status" id="d-series-status"></span>
           </div>
         </div>
@@ -1957,6 +2030,49 @@ body.control-panel-is-collapsed .add-book-wrap .btn{padding:0;width:var(--icon-b
       <button class="btn small left danger" id="d-delete">Delete</button>
       <button class="btn small" data-close="detail-dialog">Cancel</button>
       <button class="btn primary small" id="d-save">Save</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ SERIES PICKER DIALOG ============ -->
+<dialog id="series-picker-dialog">
+  <div class="dialog-inner">
+    <div class="dialog-head">
+      <h3 id="series-picker-title">Choose Series Books</h3>
+      <button class="x-btn" data-close="series-picker-dialog">✕</button>
+    </div>
+
+    <div class="series-picker-tools">
+      <button class="btn small" id="series-select-all" type="button">Select All</button>
+      <button class="btn small" id="series-clear-all" type="button">Clear</button>
+      <span class="series-picker-count" id="series-selected-count">0 selected</span>
+    </div>
+
+    <div class="series-picker-list" id="series-picker-list"></div>
+
+    <div class="form-actions">
+      <button class="btn small" data-close="series-picker-dialog">Cancel</button>
+      <button class="btn primary small" id="series-review" type="button">Review Selection</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ SERIES CONFIRM DIALOG ============ -->
+<dialog id="series-confirm-dialog">
+  <div class="dialog-inner">
+    <div class="dialog-head">
+      <h3>Confirm Series Books</h3>
+      <button class="x-btn" data-close="series-confirm-dialog">✕</button>
+    </div>
+
+    <div class="field">
+      <label>Books to Add</label>
+      <div class="series-confirm-list" id="series-confirm-list"></div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn small" data-close="series-confirm-dialog">Back</button>
+      <button class="btn primary small" id="series-confirm-add" type="button">Add Selected Books</button>
     </div>
   </div>
 </dialog>
@@ -2241,6 +2357,41 @@ const state = {
 
 const PALETTE = ['#ff8a00','#0099ff','#9fe6b8','#b18cff','#ff6b7e','#f0b056','#5dd6a0','#7dd3fc'];
 const CHART_PALETTE = ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ab'];
+const COMMON_LITERARY_GENRES = [
+  'Literary Fiction',
+  'Historical Fiction',
+  'Science Fiction',
+  'Fantasy',
+  'Mystery',
+  'Thriller',
+  'Horror',
+  'Romance',
+  'Adventure',
+  'Dystopian',
+  'Classics',
+  'Biography',
+  'Autobiography',
+  'Memoir',
+  'History',
+  'Philosophy',
+  'Religion',
+  'Theology',
+  'Business',
+  'Leadership',
+  'Self-Help',
+  'Psychology',
+  'Science',
+  'Technology',
+  'Politics',
+  'Poetry',
+  'Drama',
+  'Essays',
+  'Short Stories',
+  'Graphic Novel',
+  'Young Adult',
+  "Children's Literature",
+  'Reference'
+];
 
 /* ==========================================================
    UTIL
@@ -2705,6 +2856,60 @@ async function fetchSeriesBooks(series, author = '', currentTitle = ''){
     }));
 }
 /* ==========================================================
+   GENRE DROPDOWNS
+   ========================================================== */
+function normalizeGenreLabel(genre){
+  return String(genre || '').trim().replace(/\s+/g, ' ');
+}
+function genreKey(genre){
+  return normalizeGenreLabel(genre).toLowerCase();
+}
+function commonGenreDisplay(genre){
+  const key = genreKey(genre);
+  return COMMON_LITERARY_GENRES.find(g => genreKey(g) === key) || normalizeGenreLabel(genre);
+}
+function getLibraryGenreEntries(){
+  const counts = new Map();
+  state.books.forEach(book => {
+    const genre = normalizeGenreLabel(book.genre);
+    if (!genre) return;
+    const key = genreKey(genre);
+    if (!counts.has(key)) counts.set(key, { name: commonGenreDisplay(genre), count: 0 });
+    counts.get(key).count += 1;
+  });
+  return [...counts.values()].sort((a,b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+function getOrderedGenreOptions(current = ''){
+  const seen = new Set();
+  const options = [];
+  const add = name => {
+    const label = commonGenreDisplay(name);
+    const key = genreKey(label);
+    if (!label || seen.has(key)) return;
+    seen.add(key);
+    options.push(label);
+  };
+  getLibraryGenreEntries().forEach(entry => add(entry.name));
+  COMMON_LITERARY_GENRES.forEach(add);
+  if (current) add(current);
+  return options;
+}
+function setGenreSelectOptions(select, current = ''){
+  if (!select) return;
+  const value = normalizeGenreLabel(current || select.value);
+  const options = getOrderedGenreOptions(value);
+  select.innerHTML = '<option value="">No Genre</option>' + options.map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join('');
+  select.value = value;
+}
+function setGenreSelectValue(id, value){
+  setGenreSelectOptions(document.getElementById(id), value || '');
+}
+function refreshGenreDropdowns(){
+  setGenreSelectOptions(document.getElementById('m-genre'));
+  setGenreSelectOptions(document.getElementById('d-genre'));
+}
+
+/* ==========================================================
    CRUD
    ========================================================== */
 function booksAreDuplicates(a, b){
@@ -2917,6 +3122,7 @@ function renderGrid(viewName, gridId, emptyQuote, emptySub){
 }
 
 function renderAll(){
+  refreshGenreDropdowns();
   renderSidebar();
   renderGrid('library', '#library-grid',
     'A reader lives a thousand lives before he dies.',
@@ -3287,7 +3493,8 @@ function resetAddDialog(){
   $('#search-results').innerHTML = '';
   $('#isbn-input').value = '';
   $('#isbn-result').innerHTML = '';
-  ['m-title','m-author','m-pages','m-genre','m-year'].forEach(id => $('#'+id).value = '');
+  ['m-title','m-author','m-pages','m-year'].forEach(id => $('#'+id).value = '');
+  setGenreSelectValue('m-genre', '');
   $('#m-status').value = 'want';
   $('#bulk-books-input').value = '';
   $('#bulk-preview').style.display = 'none';
@@ -3543,7 +3750,7 @@ function openDetail(b){
   $('#d-author').value = b.author || '';
   $('#d-pages').value = b.pages || '';
   $('#d-year').value = b.year || '';
-  $('#d-genre').value = b.genre || '';
+  setGenreSelectValue('d-genre', b.genre || '');
   $('#d-series').value = b.series || '';
   $('#d-status').value = b.status || 'want';
   $('#d-start').value = b.startDate || '';
@@ -3632,7 +3839,7 @@ function applyMetadataToDetail(metadata, overwrite = true){
   if (!$('#d-author').value.trim() && metadata.author) $('#d-author').value = metadata.author;
   if (overwrite || !$('#d-pages').value) $('#d-pages').value = metadata.pages || $('#d-pages').value || '';
   if (overwrite || !$('#d-year').value) $('#d-year').value = metadata.year || $('#d-year').value || '';
-  if (overwrite || !$('#d-genre').value) $('#d-genre').value = metadata.genre || $('#d-genre').value || '';
+  if (overwrite || !$('#d-genre').value) setGenreSelectValue('d-genre', metadata.genre || $('#d-genre').value || '');
   if (overwrite || !$('#d-isbn').value) $('#d-isbn').value = metadata.isbn || $('#d-isbn').value || '';
   if (overwrite || !$('#d-series').value) $('#d-series').value = metadata.series || $('#d-series').value || '';
   if ((overwrite || !$('#d-cover-url').value) && metadata.coverUrl && !detailDialog._manualCoverChanged) setDetailCover(metadata.coverUrl);
@@ -3721,13 +3928,95 @@ $('#d-series').addEventListener('input', () => {
   refreshSeriesAddAllUI();
   detailDialog._metadataQueryDirty = true;
 });
+const seriesPickerDialog = $('#series-picker-dialog');
+const seriesConfirmDialog = $('#series-confirm-dialog');
+let seriesPickerBooks = [];
+let seriesConfirmBooks = [];
+
+function selectedSeriesBooks(){
+  return [...document.querySelectorAll('.series-book-check:checked')]
+    .map(input => seriesPickerBooks[parseInt(input.dataset.i, 10)])
+    .filter(Boolean);
+}
+function updateSeriesSelectedCount(){
+  const count = selectedSeriesBooks().length;
+  $('#series-selected-count').textContent = `${count} selected`;
+  $('#series-review').disabled = count === 0;
+}
+function renderSeriesPicker(books, series){
+  seriesPickerBooks = books.slice();
+  $('#series-picker-title').textContent = `Choose ${series} Books`;
+  $('#series-picker-list').innerHTML = books.map((book, i) => {
+    const cover = book.coverUrl
+      ? `<img src="${esc(book.coverUrl)}" alt="">`
+      : esc((book.title || 'Book').slice(0, 1));
+    const meta = [book.author, book.year, book.genre].filter(Boolean).join(' · ');
+    return `
+      <label class="series-picker-item">
+        <input class="series-picker-check" type="checkbox" data-i="${i}" checked>
+        <span class="series-picker-cover">${cover}</span>
+        <span>
+          <span class="series-picker-title">${esc(book.title || 'Untitled')}</span>
+          <span class="series-picker-meta">${esc(meta || 'Series book')}</span>
+        </span>
+      </label>`;
+  }).join('');
+  $('#series-picker-list').querySelectorAll('.series-book-check').forEach(input => {
+    input.addEventListener('change', updateSeriesSelectedCount);
+  });
+  updateSeriesSelectedCount();
+}
+function renderSeriesConfirmation(books){
+  seriesConfirmBooks = books.slice();
+  $('#series-confirm-list').innerHTML = `
+    <p>${books.length} book${books.length === 1 ? '' : 's'} selected:</p>
+    <ul>${books.map(book => `<li><strong>${esc(book.title || 'Untitled')}</strong>${book.author ? ` by ${esc(book.author)}` : ''}</li>`).join('')}</ul>
+  `;
+}
+
+$('#series-select-all').addEventListener('click', () => {
+  document.querySelectorAll('.series-book-check').forEach(input => input.checked = true);
+  updateSeriesSelectedCount();
+});
+$('#series-clear-all').addEventListener('click', () => {
+  document.querySelectorAll('.series-book-check').forEach(input => input.checked = false);
+  updateSeriesSelectedCount();
+});
+$('#series-review').addEventListener('click', () => {
+  const selected = selectedSeriesBooks();
+  if (!selected.length){ toast('Select at least one book'); return; }
+  renderSeriesConfirmation(selected);
+  seriesConfirmDialog.showModal();
+});
+$('#series-confirm-add').addEventListener('click', async () => {
+  const selected = seriesConfirmBooks.slice();
+  if (!selected.length){ toast('Select at least one book'); return; }
+  showOperationStatus('Adding selected books', `Saving ${selected.length} selected book${selected.length === 1 ? '' : 's'}…`, 70, 'Writing library records');
+  try {
+    const result = await addBooks(selected);
+    const msg = result.skipped
+      ? `Added ${result.added} · ignored ${result.skipped} duplicate${result.skipped === 1 ? '' : 's'}`
+      : `Added ${result.added} selected book${result.added === 1 ? '' : 's'}`;
+    setSeriesStatus(msg);
+    updateOperationStatus(result.added ? databaseStatusText(result.save) : 'All selected books were duplicates', 100, result.added ? 'Complete' : 'No duplicate records saved');
+    toast(msg);
+    if (seriesConfirmDialog.open) seriesConfirmDialog.close();
+    if (seriesPickerDialog.open) seriesPickerDialog.close();
+    hideOperationStatus(1100);
+  } catch (err){
+    updateOperationStatus('Series add failed', 100, err.message || 'Unknown error');
+    toast('Series add failed');
+    hideOperationStatus(1600);
+  }
+});
+
 $('#d-series-add-all').addEventListener('click', async () => {
   const series = $('#d-series').value.trim();
   const author = $('#d-author').value.trim();
   const currentTitle = $('#d-title').value.trim();
   if (!series){ toast('Series or collection required'); return; }
   setSeriesStatus('Finding books…');
-  showOperationStatus('Adding series books', `Finding books in ${series}…`, 25, 'Checking Open Library and Google Books');
+  showOperationStatus('Finding series books', `Finding books in ${series}…`, 25, 'Checking Open Library and Google Books');
   try {
     const seriesBooks = await fetchSeriesBooks(series, author, currentTitle);
     if (!seriesBooks.length){
@@ -3736,19 +4025,15 @@ $('#d-series-add-all').addEventListener('click', async () => {
       hideOperationStatus(1400);
       return;
     }
-    updateOperationStatus(`Saving ${seriesBooks.length} series book${seriesBooks.length === 1 ? '' : 's'}…`, 78, 'Writing library records');
-    const result = await addBooks(seriesBooks);
-    const msg = result.skipped
-      ? `Added ${result.added} · ignored ${result.skipped} duplicate${result.skipped === 1 ? '' : 's'}`
-      : `Added ${result.added} series book${result.added === 1 ? '' : 's'}`;
-    setSeriesStatus(msg);
-    updateOperationStatus(result.added ? databaseStatusText(result.save) : 'All series books were duplicates', 100, result.added ? 'Complete' : 'No duplicate records saved');
-    toast(msg);
-    hideOperationStatus(1100);
+    setSeriesStatus(`${seriesBooks.length} book${seriesBooks.length === 1 ? '' : 's'} found`);
+    updateOperationStatus(`${seriesBooks.length} book${seriesBooks.length === 1 ? '' : 's'} found`, 100, 'Choose which books to add');
+    hideOperationStatus(500);
+    renderSeriesPicker(seriesBooks, series);
+    setTimeout(() => seriesPickerDialog.showModal(), 80);
   } catch (err){
     setSeriesStatus('Series lookup failed');
-    updateOperationStatus('Series add failed', 100, err.message || 'Unknown error');
-    toast('Series add failed');
+    updateOperationStatus('Series lookup failed', 100, err.message || 'Unknown error');
+    toast('Series lookup failed');
     hideOperationStatus(1600);
   }
 });
