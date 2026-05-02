@@ -1441,6 +1441,15 @@ body[data-theme="blueprint-light"] .detail-cover{
 .cover-choice:hover,.cover-choice.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-ring)}
 .cover-choice img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:calc(var(--radius-sm) - 4px);display:block;background:var(--inset)}
 .metadata-status{font-size:.78rem;color:var(--muted-2);padding:.35rem 0 0}
+.series-actions{
+  display:flex;
+  align-items:center;
+  gap:.5rem;
+  flex-wrap:wrap;
+  margin-top:.45rem;
+}
+.series-actions[hidden]{display:none}
+.series-status{font-size:.76rem;color:var(--muted-2)}
 
 
 /* Account info dialog */
@@ -1888,7 +1897,14 @@ body.control-panel-is-collapsed .add-book-wrap .btn{padding:0;width:var(--icon-b
           <div class="field"><label>Year</label><input type="number" class="input" id="d-year"></div>
         </div>
         <div class="field"><label>Genre</label><input type="text" class="input" id="d-genre"></div>
-        <div class="field"><label>Series / Collection</label><input type="text" class="input" id="d-series"></div>
+        <div class="field">
+          <label>Series / Collection</label>
+          <input type="text" class="input" id="d-series">
+          <div class="series-actions" id="series-actions" hidden>
+            <button class="btn small" id="d-series-add-all" type="button">Add All Books in Series</button>
+            <span class="series-status" id="d-series-status"></span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1952,6 +1968,11 @@ body.control-panel-is-collapsed .add-book-wrap .btn{padding:0;width:var(--icon-b
     <div class="dialog-head">
       <h3>Account Info</h3>
       <button class="x-btn" data-close="account-dialog">✕</button>
+    </div>
+
+    <div class="field">
+      <label>User Name</label>
+      <input type="text" class="input" id="account-username" maxlength="40" placeholder="Reader">
     </div>
 
     <div class="account-profile">
@@ -2104,6 +2125,7 @@ const defaultPrefs = {
   font: 'rajdhani',
   collapsed: false,
   profileImage: '',
+  username: 'Reader',
 };
 
 const prefs = { ...defaultPrefs };
@@ -2165,8 +2187,15 @@ function applyCollapsed(c){
   document.getElementById('collapse-btn').textContent = c ? '›' : '‹';
 }
 
+function accountInitial(){
+  const name = (prefs.username || 'Reader').trim();
+  return (name[0] || 'R').toUpperCase();
+}
+
 function applyAccount(){
   const avatar = $('#avatar');
+  const username = $('#username');
+  if (username) username.textContent = (prefs.username || 'Reader').trim() || 'Reader';
   if (!avatar) return;
   avatar.innerHTML = '';
   if (prefs.profileImage){
@@ -2176,13 +2205,26 @@ function applyAccount(){
     avatar.appendChild(img);
     avatar.classList.add('has-image');
   } else {
-    avatar.textContent = 'R';
+    avatar.textContent = accountInitial();
     avatar.classList.remove('has-image');
   }
 }
 
+function prefsPayload(){
+  return {
+    family: prefs.family || defaultPrefs.family,
+    mode: prefs.mode || defaultPrefs.mode,
+    accent: prefs.accent || defaultPrefs.accent,
+    font: prefs.font || defaultPrefs.font,
+    collapsed: !!prefs.collapsed,
+    profileImage: prefs.profileImage || '',
+    username: (prefs.username || 'Reader').trim() || 'Reader',
+  };
+}
+
 async function savePrefs(){
-  await storage.set(KEYS.prefs, prefs);
+  Object.assign(prefs, prefsPayload());
+  return await storage.set(KEYS.prefs, prefsPayload());
 }
 
 /* ==========================================================
@@ -2198,6 +2240,7 @@ const state = {
 };
 
 const PALETTE = ['#ff8a00','#0099ff','#9fe6b8','#b18cff','#ff6b7e','#f0b056','#5dd6a0','#7dd3fc'];
+const CHART_PALETTE = ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ab'];
 
 /* ==========================================================
    UTIL
@@ -2252,9 +2295,9 @@ function databaseStatusText(result){
 /* ==========================================================
    OPEN LIBRARY API (unchanged from prior version)
    ========================================================== */
-async function olSearch(q){
+async function olSearch(q, limit = 10){
   const fields = 'title,author_name,first_publish_year,isbn,cover_i,number_of_pages_median,subject,key,language,publisher,edition_count';
-  const params = new URLSearchParams({ q, limit:'10', fields });
+  const params = new URLSearchParams({ q, limit:String(limit), fields });
   const data = await apiRequest(`/api/metadata/openlibrary/search?${params.toString()}`);
   return data.docs || [];
 }
@@ -2273,12 +2316,15 @@ async function olTitleSearch(title, author = ''){
   }
   return docs;
 }
-async function googleBooksSearch(title, author = ''){
-  const q = [title ? `intitle:${title}` : '', author ? `inauthor:${author}` : ''].filter(Boolean).join(' ');
-  if (!q.trim()) return [];
-  const params = new URLSearchParams({ q, maxResults:'12', printType:'books', langRestrict:'en' });
+async function googleBooksQuery(q, maxResults = 12){
+  if (!String(q || '').trim()) return [];
+  const params = new URLSearchParams({ q, maxResults:String(maxResults), printType:'books', langRestrict:'en' });
   const data = await apiRequest(`/api/metadata/google/books?${params.toString()}`);
   return data.items || [];
+}
+async function googleBooksSearch(title, author = ''){
+  const q = [title ? `intitle:${title}` : '', author ? `inauthor:${author}` : ''].filter(Boolean).join(' ');
+  return googleBooksQuery(q, 12);
 }
 function googleCoverUrl(info = {}){
   const links = info.imageLinks || {};
@@ -2292,7 +2338,7 @@ function metadataFromGoogleVolume(item){
   const year = parseInt(String(info.publishedDate || '').match(/\d{4}/)?.[0]) || null;
   return {
     title: englishText(info.title) || '',
-    author: englishText((info.authors || [])[0] || '') || '',
+    author: pickEnglishAuthor(info.authors || []) || '',
     pages: info.pageCount || null,
     genre: pickGenre(info.categories || []),
     year,
@@ -2381,6 +2427,10 @@ function englishText(value){
   const s = String(value || '').trim();
   return isMostlyEnglishText(s) ? s : '';
 }
+function pickEnglishAuthor(authors){
+  const list = Array.isArray(authors) ? authors : [authors];
+  return list.map(englishText).find(Boolean) || '';
+}
 function pickGenre(subjects){
   if (!subjects || !subjects.length) return '';
   const blocked = /fictional|protected daisy|accessible book|internet archive|open library|large type|juvenile|translations/i;
@@ -2447,7 +2497,7 @@ function metadataScore(doc, title, author = ''){
 function metadataFromDoc(doc, workDetails = null){
   return {
     title: englishText(doc.title) || '',
-    author: englishText((doc.author_name || [])[0] || '') || '',
+    author: pickEnglishAuthor(doc.author_name || []) || '',
     pages: doc.number_of_pages_median || null,
     genre: pickGenre([doc.subject, workDetails?.subjects].flat().filter(Boolean)),
     year: doc.first_publish_year || null,
@@ -2534,7 +2584,7 @@ async function enrichBooksMetadata(books, onProgress = null){
 function findCoverChoicesFromDocs(docs){
   return docs.map(doc => ({
     title: englishText(doc.title) || '',
-    author: englishText((doc.author_name || [])[0] || '') || '',
+    author: pickEnglishAuthor(doc.author_name || []) || '',
     year: doc.first_publish_year || '',
     coverUrl: olCoverUrl(doc) || '',
     series: pickSeriesOrCollection(doc),
@@ -2578,6 +2628,81 @@ async function getCoverChoices(title, author = '', isbn = ''){
     })
     .sort((a,b) => b.score - a.score)
     .slice(0, 18);
+}
+
+function seriesTitleKey(book){
+  return `${normalizeMetadataTitle(book?.title)}::${normalizeAuthor(book?.author)}`;
+}
+function seriesCandidateScore(book, series, author = ''){
+  const seriesNorm = normalizeMetadataTitle(series);
+  const titleNorm = normalizeMetadataTitle(book?.title);
+  const bookSeriesNorm = normalizeMetadataTitle(book?.series);
+  if (!seriesNorm || !titleNorm) return 0;
+  let score = 0;
+  if (bookSeriesNorm){
+    if (bookSeriesNorm === seriesNorm) score += 120;
+    else if (bookSeriesNorm.includes(seriesNorm) || seriesNorm.includes(bookSeriesNorm)) score += 80;
+  }
+  const seriesWords = seriesNorm.split(' ').filter(w => w.length > 2);
+  const titleOverlap = seriesWords.filter(w => titleNorm.includes(w)).length;
+  score += titleOverlap * 10;
+  const wantedAuthor = normalizeAuthor(author);
+  const foundAuthor = normalizeAuthor(book?.author);
+  if (wantedAuthor && foundAuthor){
+    if (foundAuthor === wantedAuthor) score += 35;
+    else if (foundAuthor.includes(wantedAuthor) || wantedAuthor.includes(foundAuthor)) score += 18;
+  }
+  if (book?.year) score += 4;
+  if (book?.coverUrl) score += 4;
+  return score;
+}
+async function fetchSeriesBooks(series, author = '', currentTitle = ''){
+  const cleanSeries = String(series || '').trim();
+  if (!cleanSeries) return [];
+  const googleQuery = [`"${cleanSeries}"`, author ? `inauthor:${author}` : ''].filter(Boolean).join(' ');
+  const openLibraryQuery = [cleanSeries, author].filter(Boolean).join(' ');
+  const [olResult, googleResult] = await Promise.allSettled([
+    olSearch(openLibraryQuery, 25),
+    googleBooksQuery(googleQuery, 25)
+  ]);
+
+  const candidates = [];
+  const olDocs = olResult.status === 'fulfilled' ? olResult.value : [];
+  olDocs.forEach(doc => candidates.push(metadataFromDoc(doc)));
+  const googleItems = googleResult.status === 'fulfilled' ? googleResult.value : [];
+  googleItems.forEach(item => candidates.push(metadataFromGoogleVolume(item)));
+
+  const currentTitleNorm = normalizeMetadataTitle(currentTitle);
+  const seen = new Set();
+  return candidates
+    .map(book => ({ ...book, series: book.series || cleanSeries, score: seriesCandidateScore(book, cleanSeries, author) }))
+    .filter(book => {
+      if (!book.title || normalizeMetadataTitle(book.title) === currentTitleNorm) return false;
+      if (!englishText(book.title) || (book.author && !englishText(book.author))) return false;
+      if (book.score < 10 && normalizeMetadataTitle(book.series) !== normalizeMetadataTitle(cleanSeries)) return false;
+      const key = seriesTitleKey(book);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a,b) => (a.year || 9999) - (b.year || 9999) || a.title.localeCompare(b.title))
+    .slice(0, 30)
+    .map(book => ({
+      title: book.title,
+      author: book.author || '',
+      pages: book.pages || null,
+      genre: book.genre || '',
+      series: book.series || cleanSeries,
+      year: book.year || null,
+      status: 'want',
+      startDate: '',
+      finishDate: '',
+      rating: null,
+      isbn: book.isbn || '',
+      coverUrl: book.coverUrl || '',
+      notes: '',
+      loan: null,
+    }));
 }
 /* ==========================================================
    CRUD
@@ -2843,9 +2968,7 @@ function drawDonut(canvasId, legendId, entries){
   }
   const labels = entries.map(e => e[0]);
   const data = entries.map(e => e[1]);
-  // Use accent + palette mix
-  const accent = getCSS('--accent') || '#ff8a00';
-  const colors = labels.map((_,i) => i === 0 ? accent : PALETTE[(i) % PALETTE.length]);
+  const colors = labels.map((_,i) => CHART_PALETTE[i % CHART_PALETTE.length]);
   const total = data.reduce((a,b) => a+b, 0);
   const borderColor = getCSS('--panel') || '#131316';
 
@@ -3074,7 +3197,7 @@ function renderProfilePreview(image){
     img.alt = 'Profile picture preview';
     preview.appendChild(img);
   } else {
-    preview.textContent = 'R';
+    preview.textContent = accountInitial();
   }
 }
 
@@ -3105,6 +3228,7 @@ function resizeProfileImage(file){
 
 function openAccountDialog(){
   pendingProfileImage = prefs.profileImage || '';
+  $('#account-username').value = prefs.username || 'Reader';
   renderProfilePreview(pendingProfileImage);
   $('#profile-file').value = '';
   accountDialog.showModal();
@@ -3140,11 +3264,12 @@ $('#profile-remove').addEventListener('click', () => {
 });
 
 $('#profile-save').addEventListener('click', async () => {
+  prefs.username = ($('#account-username').value || 'Reader').trim() || 'Reader';
   prefs.profileImage = pendingProfileImage || '';
   applyAccount();
   await savePrefs();
   accountDialog.close();
-  toast('Profile saved');
+  toast('Account saved');
 });
 
 /* ==========================================================
@@ -3198,7 +3323,7 @@ async function doSearch(q){
         ${olCoverUrl(d) ? `<img src="${esc(olCoverUrl(d))}" onerror="this.style.visibility='hidden'">` : '<div style="width:36px;height:54px;background:var(--inset);border-radius:3px"></div>'}
         <div class="ri-info">
           <div class="ri-title">${esc(d.title||'Untitled')}</div>
-          <div class="ri-author">${esc((d.author_name||[]).join(', ')||'Unknown')}</div>
+          <div class="ri-author">${esc(pickEnglishAuthor(d.author_name || []) || 'Unknown')}</div>
           <div class="ri-meta">${d.first_publish_year||''} ${d.number_of_pages_median ? '· '+d.number_of_pages_median+'pp':''}</div>
         </div>
       </div>`).join('') + `</div>`;
@@ -3221,7 +3346,7 @@ $('#isbn-go').addEventListener('click', async () => {
       ${olCoverUrl(doc) ? `<img src="${esc(olCoverUrl(doc))}">` : '<div style="width:36px;height:54px;background:var(--inset);border-radius:3px"></div>'}
       <div class="ri-info">
         <div class="ri-title">${esc(doc.title)}</div>
-        <div class="ri-author">${esc((doc.author_name||[]).join(', ')||'Unknown')}</div>
+        <div class="ri-author">${esc(pickEnglishAuthor(doc.author_name || []) || 'Unknown')}</div>
         <div class="ri-meta">${doc.first_publish_year||''} ${doc.number_of_pages_median?'· '+doc.number_of_pages_median+'pp':''}</div>
       </div>
     </div></div>`;
@@ -3236,7 +3361,7 @@ function pickFromAPI(doc){
   openDetail({
     id: null,
     title: doc.title || '',
-    author: (doc.author_name||[])[0] || '',
+    author: pickEnglishAuthor(doc.author_name || []) || '',
     pages: doc.number_of_pages_median || '',
     genre: pickGenre(doc.subject),
     series: pickSeriesOrCollection(doc),
@@ -3442,6 +3567,7 @@ function openDetail(b){
   detailDialog._currentCover = b.coverUrl || '';
   detailDialog._manualCoverChanged = false;
   detailDialog._metadataQueryDirty = false;
+  refreshSeriesAddAllUI();
   detailDialog.showModal();
 }
 
@@ -3489,6 +3615,18 @@ function setCardMetadataUpdating(id, isUpdating){
   else state.metadataUpdatingIds.delete(id);
   renderAll();
 }
+
+function setSeriesStatus(text){
+  const el = $('#d-series-status');
+  if (el) el.textContent = text || '';
+}
+function refreshSeriesAddAllUI(){
+  const actions = $('#series-actions');
+  if (!actions) return;
+  const hasSeries = !!$('#d-series').value.trim();
+  actions.hidden = !hasSeries;
+  if (!hasSeries) setSeriesStatus('');
+}
 function applyMetadataToDetail(metadata, overwrite = true){
   if (!metadata) return;
   if (!$('#d-author').value.trim() && metadata.author) $('#d-author').value = metadata.author;
@@ -3498,6 +3636,7 @@ function applyMetadataToDetail(metadata, overwrite = true){
   if (overwrite || !$('#d-isbn').value) $('#d-isbn').value = metadata.isbn || $('#d-isbn').value || '';
   if (overwrite || !$('#d-series').value) $('#d-series').value = metadata.series || $('#d-series').value || '';
   if ((overwrite || !$('#d-cover-url').value) && metadata.coverUrl && !detailDialog._manualCoverChanged) setDetailCover(metadata.coverUrl);
+  refreshSeriesAddAllUI();
 }
 let detailMetadataTimer = null;
 let detailMetadataToken = 0;
@@ -3578,6 +3717,41 @@ $('#d-isbn').addEventListener('change', () => {
 });
 $('#d-cover-url').addEventListener('input', e => setDetailCover(e.target.value.trim(), true));
 $('#d-cover-search').addEventListener('click', findCoverOptions);
+$('#d-series').addEventListener('input', () => {
+  refreshSeriesAddAllUI();
+  detailDialog._metadataQueryDirty = true;
+});
+$('#d-series-add-all').addEventListener('click', async () => {
+  const series = $('#d-series').value.trim();
+  const author = $('#d-author').value.trim();
+  const currentTitle = $('#d-title').value.trim();
+  if (!series){ toast('Series or collection required'); return; }
+  setSeriesStatus('Finding books…');
+  showOperationStatus('Adding series books', `Finding books in ${series}…`, 25, 'Checking Open Library and Google Books');
+  try {
+    const seriesBooks = await fetchSeriesBooks(series, author, currentTitle);
+    if (!seriesBooks.length){
+      setSeriesStatus('No additional books found');
+      updateOperationStatus('No additional books found', 100, 'Try editing the series name');
+      hideOperationStatus(1400);
+      return;
+    }
+    updateOperationStatus(`Saving ${seriesBooks.length} series book${seriesBooks.length === 1 ? '' : 's'}…`, 78, 'Writing library records');
+    const result = await addBooks(seriesBooks);
+    const msg = result.skipped
+      ? `Added ${result.added} · ignored ${result.skipped} duplicate${result.skipped === 1 ? '' : 's'}`
+      : `Added ${result.added} series book${result.added === 1 ? '' : 's'}`;
+    setSeriesStatus(msg);
+    updateOperationStatus(result.added ? databaseStatusText(result.save) : 'All series books were duplicates', 100, result.added ? 'Complete' : 'No duplicate records saved');
+    toast(msg);
+    hideOperationStatus(1100);
+  } catch (err){
+    setSeriesStatus('Series lookup failed');
+    updateOperationStatus('Series add failed', 100, err.message || 'Unknown error');
+    toast('Series add failed');
+    hideOperationStatus(1600);
+  }
+});
 
 $('#d-save').addEventListener('click', async () => {
   const isNew = !state.editingId;
