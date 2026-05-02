@@ -1,0 +1,31 @@
+{
+  "name": "codex-backend",
+  "version": "1.0.0",
+  "description": "CODEX reading library app with Express and MongoDB backend",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "nodemon server/server.js",
+    "check": "node --check server/server.js"
+  },
+  "keywords": [
+    "codex",
+    "books",
+    "mongodb",
+    "express",
+    "railway"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": "20.x"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongoose": "^8.5.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
