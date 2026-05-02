@@ -1195,6 +1195,7 @@ body[data-theme="blueprint-light"] dialog{
 .x-btn:hover{color:var(--danger,#dc2626);background:rgba(220,38,38,.08)}
 
 .seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:1rem}
+.add-mode-seg{grid-template-columns:repeat(4,1fr)}
 .seg button{
   background:transparent;border:none;cursor:pointer;
   padding:.6rem;color:var(--muted);
@@ -1515,10 +1516,11 @@ body.control-panel-is-collapsed .add-book-wrap .btn{padding:0;width:var(--icon-b
       <button class="x-btn" data-close="add-dialog">✕</button>
     </div>
 
-    <div class="seg" id="add-mode-seg">
+    <div class="seg add-mode-seg" id="add-mode-seg">
       <button class="active" data-mode="search">Search</button>
       <button data-mode="isbn">ISBN</button>
       <button data-mode="manual">Manual</button>
+      <button data-mode="bulk">Bulk Paste</button>
     </div>
 
     <div id="add-search">
@@ -1558,6 +1560,18 @@ body.control-panel-is-collapsed .add-book-wrap .btn{padding:0;width:var(--icon-b
       <div class="form-actions">
         <button class="btn small" data-close="add-dialog">Cancel</button>
         <button class="btn primary small" id="m-save">Add</button>
+      </div>
+    </div>
+
+    <div id="add-bulk" style="display:none">
+      <div class="field">
+        <label>Paste Finished Books</label>
+        <textarea id="bulk-books-input" class="input" rows="14" placeholder="2024:\nThe Art of the Deal\nHyperion\n\n2025:\nThe Road\n\n2026:\nProject Hail Mary\nNemesis 4/28/26"></textarea>
+      </div>
+      <div class="loading" id="bulk-preview" style="display:none"></div>
+      <div class="form-actions">
+        <button class="btn small" data-close="add-dialog">Cancel</button>
+        <button class="btn primary small" id="bulk-save">Add Finished Books</button>
       </div>
     </div>
   </div>
@@ -1883,6 +1897,13 @@ function pickGenre(subjects){
    ========================================================== */
 async function addBook(b){
   state.books.unshift({ id: uid(), addedAt: Date.now(), ...b });
+  await storage.set(KEYS.books, state.books);
+  renderAll();
+}
+async function addBooks(books){
+  const now = Date.now();
+  const prepared = books.map((b, i) => ({ id: uid(), addedAt: now + i, ...b }));
+  state.books.unshift(...prepared);
   await storage.set(KEYS.books, state.books);
   renderAll();
 }
@@ -2316,6 +2337,9 @@ function resetAddDialog(){
   $('#isbn-result').innerHTML = '';
   ['m-title','m-author','m-pages','m-genre','m-year'].forEach(id => $('#'+id).value = '');
   $('#m-status').value = 'want';
+  $('#bulk-books-input').value = '';
+  $('#bulk-preview').style.display = 'none';
+  $('#bulk-preview').textContent = '';
   setAddMode('search');
 }
 function setAddMode(mode){
@@ -2323,6 +2347,7 @@ function setAddMode(mode){
   $('#add-search').style.display = mode === 'search' ? '' : 'none';
   $('#add-isbn').style.display = mode === 'isbn' ? '' : 'none';
   $('#add-manual').style.display = mode === 'manual' ? '' : 'none';
+  $('#add-bulk').style.display = mode === 'bulk' ? '' : 'none';
 }
 $('#add-mode-seg').addEventListener('click', e => {
   if (e.target.matches('button')) setAddMode(e.target.dataset.mode);
@@ -2411,6 +2436,116 @@ $('#m-save').addEventListener('click', async () => {
   });
   addDialog.close();
   toast('Added');
+});
+
+function toIsoFinishedDate(year, month, day){
+  const y = Number(year);
+  if (!y || y < 1000 || y > 9999) return '';
+  if (!month || !day) return `${y}-12-31`;
+  const m = Number(month);
+  const d = Number(day);
+  if (m < 1 || m > 12 || d < 1 || d > 31) return `${y}-12-31`;
+  return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+
+function normalizePastedYear(yearText){
+  const n = Number(yearText);
+  if (!Number.isInteger(n) || n < 1000 || n > 9999) return null;
+  return n;
+}
+
+function normalizePastedDateYear(dateYear, currentYear){
+  if (!dateYear) return currentYear;
+  const n = Number(dateYear);
+  if (dateYear.length === 2) return n >= 70 ? 1900 + n : 2000 + n;
+  return n;
+}
+
+function parseBulkFinishedBooks(text){
+  const books = [];
+  const errors = [];
+  let currentYear = null;
+
+  text.split(/\r?\n/).forEach((rawLine, idx) => {
+    const line = rawLine.trim();
+    if (!line) return;
+
+    const yearMatch = line.match(/^(\d{4})\s*:?$/);
+    if (yearMatch){
+      currentYear = normalizePastedYear(yearMatch[1]);
+      if (!currentYear) errors.push(`Line ${idx + 1}: invalid year.`);
+      return;
+    }
+
+    if (!currentYear){
+      errors.push(`Line ${idx + 1}: add a year header before this book.`);
+      return;
+    }
+
+    const datedMatch = line.match(/^(.*?)\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))\s*$/);
+    const title = (datedMatch ? datedMatch[1] : line).trim();
+    if (!title){
+      errors.push(`Line ${idx + 1}: missing book title.`);
+      return;
+    }
+
+    const finishYear = datedMatch ? normalizePastedDateYear(datedMatch[4], currentYear) : currentYear;
+    const finishDate = datedMatch
+      ? toIsoFinishedDate(finishYear, datedMatch[2], datedMatch[3])
+      : toIsoFinishedDate(currentYear);
+
+    books.push({
+      title,
+      author: '',
+      pages: null,
+      genre: '',
+      year: null,
+      status: 'read',
+      startDate: '',
+      finishDate,
+      rating: null,
+      isbn: '',
+      coverUrl: '',
+      notes: '',
+      loan: null,
+    });
+  });
+
+  return { books, errors };
+}
+
+$('#bulk-books-input').addEventListener('input', e => {
+  const preview = $('#bulk-preview');
+  const { books, errors } = parseBulkFinishedBooks(e.target.value);
+  if (!e.target.value.trim()){
+    preview.style.display = 'none';
+    preview.textContent = '';
+    return;
+  }
+  preview.style.display = '';
+  preview.textContent = errors.length
+    ? `${books.length} books ready · ${errors.length} line${errors.length === 1 ? '' : 's'} need attention`
+    : `${books.length} finished book${books.length === 1 ? '' : 's'} ready to add`;
+});
+
+$('#bulk-save').addEventListener('click', async () => {
+  const raw = $('#bulk-books-input').value;
+  const { books, errors } = parseBulkFinishedBooks(raw);
+  if (!raw.trim()){
+    toast('Paste a book list first');
+    return;
+  }
+  if (errors.length){
+    toast(errors[0]);
+    return;
+  }
+  if (!books.length){
+    toast('No books found');
+    return;
+  }
+  await addBooks(books);
+  addDialog.close();
+  toast(`Added ${books.length} finished book${books.length === 1 ? '' : 's'}`);
 });
 
 /* ==========================================================
