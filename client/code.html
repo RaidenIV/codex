@@ -1070,6 +1070,104 @@ body[data-theme="blueprint-light"] .cover-frame{
 }
 .rating .empty{color:var(--muted-3)}
 
+
+
+/* Horizontal book-card layout: cover belongs to the main card, data stays readable */
+.project-card{
+  height:16.25rem;
+  grid-template-columns:7.4rem minmax(0,1fr);
+  grid-template-rows:minmax(0,1fr);
+  align-items:stretch;
+  gap:1rem;
+}
+.cover-frame{
+  grid-column:1;
+  grid-row:1;
+  width:100%;
+  height:100%;
+  min-height:0;
+  align-self:stretch;
+  background:transparent;
+  border:none;
+  box-shadow:none !important;
+  border-radius:var(--radius-sm);
+}
+.cover-frame img{
+  width:100%;
+  height:100%;
+  max-width:none;
+  object-fit:cover;
+  border-radius:var(--radius-sm);
+}
+.cover-fallback{
+  border:1px solid var(--line-soft);
+  border-radius:var(--radius-sm);
+  background:var(--inset);
+  min-height:100%;
+}
+.card-content{
+  grid-column:2;
+  min-width:0;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  gap:.35rem;
+  overflow:hidden;
+}
+.card-title{
+  font-size:1rem;
+  line-height:1.18;
+  -webkit-line-clamp:2;
+  overflow-wrap:anywhere;
+}
+.card-author{
+  white-space:normal;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  line-height:1.22;
+}
+.card-meta-row{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:.28rem;
+  min-width:0;
+  font-size:.61rem;
+  letter-spacing:.10em;
+  line-height:1.25;
+}
+.card-meta-line{
+  width:100%;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.card-meta-line.wrap{
+  white-space:normal;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+}
+.card-meta-row .dot-sep{display:none}
+.card-bottom{
+  margin-top:auto;
+  min-width:0;
+}
+.card-bottom > div:first-child{min-width:0}
+.status-pill,.loan-pill,.metadata-pill{max-width:100%}
+.metadata-pill{
+  position:absolute;
+  top:.7rem;
+  right:.7rem;
+  z-index:2;
+  max-width:calc(100% - 1.4rem);
+}
+@media (max-width:520px){
+  .project-card{grid-template-columns:6.2rem minmax(0,1fr);height:15.25rem;gap:.8rem}
+}
+
 /* Empty state */
 .empty-state{
   border:1px dashed var(--line-strong);
@@ -1320,6 +1418,78 @@ body[data-theme="blueprint-light"] .detail-cover{
 .cover-choice:hover,.cover-choice.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-ring)}
 .cover-choice img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:calc(var(--radius-sm) - 4px);display:block;background:var(--inset)}
 .metadata-status{font-size:.78rem;color:var(--muted-2);padding:.35rem 0 0}
+
+
+/* Operation status dialog */
+.operation-status{
+  position:fixed;
+  inset:0;
+  z-index:10000;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:1rem;
+  background:rgba(0,0,0,.48);
+  backdrop-filter:blur(4px);
+  -webkit-backdrop-filter:blur(4px);
+}
+.operation-status.show{display:flex}
+.operation-card{
+  width:min(420px,92vw);
+  border:1px solid var(--line-strong);
+  border-radius:var(--radius-md);
+  background:var(--panel-strong);
+  color:var(--text);
+  box-shadow:0 24px 60px -18px rgba(0,0,0,.6);
+  padding:1rem;
+}
+body[data-theme="glass-dark"] .operation-card,
+body[data-theme="glass-light"] .operation-card{
+  background:var(--panel-strong);
+  border:1px solid var(--glass-border);
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+}
+body[data-theme="blueprint-dark"] .operation-card,
+body[data-theme="blueprint-light"] .operation-card{
+  background:var(--bg);
+  border:none;
+  box-shadow:var(--shadow-menu);
+}
+.operation-title{
+  font-size:1rem;
+  font-weight:700;
+  color:var(--heading);
+  margin-bottom:.35rem;
+}
+.operation-message{
+  font-size:.86rem;
+  color:var(--muted);
+  min-height:1.25rem;
+}
+.operation-bar{
+  margin-top:.85rem;
+  height:6px;
+  border-radius:999px;
+  overflow:hidden;
+  background:var(--inset);
+}
+.operation-fill{
+  height:100%;
+  width:20%;
+  border-radius:999px;
+  background:var(--accent);
+  box-shadow:0 0 12px var(--accent-glow);
+  transition:width .25s ease;
+}
+.operation-detail{
+  margin-top:.55rem;
+  font-family:var(--font-mono);
+  font-size:.62rem;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--muted-2);
+}
 
 /* Toast */
 .toast{
@@ -1704,6 +1874,16 @@ body.control-panel-is-collapsed .add-book-wrap .btn{padding:0;width:var(--icon-b
   </div>
 </dialog>
 
+
+<div class="operation-status" id="operation-status" role="status" aria-live="polite" aria-hidden="true">
+  <div class="operation-card">
+    <div class="operation-title" id="operation-title">Working</div>
+    <div class="operation-message" id="operation-message">Preparing…</div>
+    <div class="operation-bar"><div class="operation-fill" id="operation-fill"></div></div>
+    <div class="operation-detail" id="operation-detail">Please wait</div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1790,20 +1970,25 @@ const storage = {
     writeLocal(key, val);
     try {
       if (key === KEYS.books){
-        await apiRequest('/api/books', { method:'PUT', body: JSON.stringify({ books: val }) });
-        return;
+        const data = await apiRequest('/api/books', { method:'PUT', body: JSON.stringify({ books: val }) });
+        return { ok:true, remoteSaved:true, mongoReady:data.mongoReady !== false, mode:data.mode || 'mongodb' };
       }
       if (key === KEYS.prefs){
-        await apiRequest('/api/prefs', { method:'PUT', body: JSON.stringify({ prefs: val }) });
-        return;
+        const data = await apiRequest('/api/prefs', { method:'PUT', body: JSON.stringify({ prefs: val }) });
+        return { ok:true, remoteSaved:true, mongoReady:data.mongoReady !== false, mode:data.mode || 'mongodb' };
       }
     } catch (err){
       console.warn('CODEX backend save failed; data was saved locally in this browser.', err);
+      if (window.storage){
+        try { await window.storage.set(key, JSON.stringify(val)); } catch {}
+      }
+      return { ok:false, remoteSaved:false, mongoReady:false, mode:'local', error:err };
     }
 
     if (window.storage){
       try { await window.storage.set(key, JSON.stringify(val)); } catch {}
     }
+    return { ok:true, remoteSaved:false, mongoReady:false, mode:'local' };
   }
 };
 
@@ -1915,6 +2100,38 @@ function toast(msg){
   toast._t = setTimeout(()=>t.classList.remove('show'), 2000);
 }
 
+function showOperationStatus(title, message, progress = 18, detail = 'Please wait'){
+  const panel = $('#operation-status');
+  if (!panel) return;
+  $('#operation-title').textContent = title || 'Working';
+  $('#operation-message').textContent = message || 'Preparing…';
+  $('#operation-fill').style.width = `${Math.max(5, Math.min(100, progress))}%`;
+  $('#operation-detail').textContent = detail || '';
+  panel.classList.add('show');
+  panel.setAttribute('aria-hidden','false');
+}
+function updateOperationStatus(message, progress = null, detail = null){
+  const panel = $('#operation-status');
+  if (!panel) return;
+  if (message != null) $('#operation-message').textContent = message;
+  if (progress != null) $('#operation-fill').style.width = `${Math.max(5, Math.min(100, progress))}%`;
+  if (detail != null) $('#operation-detail').textContent = detail;
+}
+function hideOperationStatus(delay = 0){
+  const panel = $('#operation-status');
+  if (!panel) return;
+  clearTimeout(hideOperationStatus._timer);
+  hideOperationStatus._timer = setTimeout(() => {
+    panel.classList.remove('show');
+    panel.setAttribute('aria-hidden','true');
+  }, delay);
+}
+function databaseStatusText(result){
+  if (result?.remoteSaved && result?.mongoReady !== false) return 'Saved to database';
+  if (result?.remoteSaved) return 'Saved to backend memory · MongoDB is not connected';
+  return 'Database save failed · saved locally in this browser';
+}
+
 /* ==========================================================
    OPEN LIBRARY API (unchanged from prior version)
    ========================================================== */
@@ -1941,6 +2158,70 @@ async function olTitleSearch(title, author = ''){
     docs = (await r.json()).docs || [];
   }
   return docs;
+}
+async function googleBooksSearch(title, author = ''){
+  const q = [title ? `intitle:${title}` : '', author ? `inauthor:${author}` : ''].filter(Boolean).join(' ');
+  if (!q.trim()) return [];
+  const params = new URLSearchParams({ q, maxResults:'12', printType:'books', langRestrict:'en' });
+  const r = await fetch(`https://www.googleapis.com/books/v1/volumes?${params.toString()}`);
+  if (!r.ok) throw new Error('Google Books lookup failed');
+  return (await r.json()).items || [];
+}
+function googleCoverUrl(info = {}){
+  const links = info.imageLinks || {};
+  const url = links.extraLarge || links.large || links.medium || links.small || links.thumbnail || links.smallThumbnail || '';
+  return String(url || '').replace(/^http:/, 'https:').replace(/&edge=curl/g, '');
+}
+function metadataFromGoogleVolume(item){
+  const info = item?.volumeInfo || {};
+  const isbn = (info.industryIdentifiers || []).find(x => /ISBN_13/i.test(x.type))
+    || (info.industryIdentifiers || []).find(x => /ISBN_10/i.test(x.type));
+  const year = parseInt(String(info.publishedDate || '').match(/\d{4}/)?.[0]) || null;
+  return {
+    title: englishText(info.title) || '',
+    author: englishText((info.authors || [])[0] || '') || '',
+    pages: info.pageCount || null,
+    genre: pickGenre(info.categories || []),
+    year,
+    isbn: isbn?.identifier || '',
+    coverUrl: googleCoverUrl(info),
+    series: inferSeriesFromTitle(info.title || '', info.subtitle || ''),
+    metadataUpdatedAt: Date.now(),
+  };
+}
+function inferSeriesFromTitle(title, subtitle = ''){
+  const joined = [title, subtitle].filter(Boolean).join(' ');
+  const match = joined.match(/(?:book|volume|vol\.?|part)\s+\d+\s+(?:of|in)\s+(.+)$/i)
+    || joined.match(/\(([^)]*(?:series|trilogy|saga|collection|cycle|chronicles)[^)]*)\)/i);
+  return match ? englishText(match[1]) : '';
+}
+function scoreMetadataCandidate(metadata, title, author = ''){
+  return metadataScore({
+    title: metadata.title,
+    author_name: metadata.author ? [metadata.author] : [],
+    first_publish_year: metadata.year,
+    isbn: metadata.isbn ? [metadata.isbn] : [],
+    cover_i: metadata.coverUrl ? 1 : null,
+    number_of_pages_median: metadata.pages,
+    subject: metadata.genre ? [metadata.genre] : [],
+    language: ['eng'],
+    series: metadata.series ? [metadata.series] : [],
+  }, title, author);
+}
+function mergeCrossReferencedMetadata(base, candidates){
+  const out = { ...base };
+  for (const c of candidates){
+    if (!c) continue;
+    if (!out.author && c.author) out.author = c.author;
+    if (!out.pages && c.pages) out.pages = c.pages;
+    if (!out.genre && c.genre) out.genre = c.genre;
+    if (!out.year && c.year) out.year = c.year;
+    if (!out.isbn && c.isbn) out.isbn = c.isbn;
+    if (!out.coverUrl && c.coverUrl) out.coverUrl = c.coverUrl;
+    if (!out.series && c.series) out.series = c.series;
+  }
+  out.metadataUpdatedAt = Date.now();
+  return out;
 }
 async function olISBN(isbn){
   const clean = isbn.replace(/[-\s]/g,'');
@@ -2066,14 +2347,41 @@ function metadataFromDoc(doc, workDetails = null){
   };
 }
 async function fetchBookMetadata(title, author = ''){
-  const docs = await olTitleSearch(title, author);
-  const ranked = docs
+  const [olResult, googleResult] = await Promise.allSettled([
+    olTitleSearch(title, author),
+    googleBooksSearch(title, author)
+  ]);
+
+  const candidates = [];
+  const olDocs = olResult.status === 'fulfilled' ? olResult.value : [];
+  const rankedOl = olDocs
     .map(doc => ({ doc, score: metadataScore(doc, title, author) }))
     .filter(item => item.score >= (author ? 45 : 35))
-    .sort((a,b) => b.score - a.score);
-  if (!ranked.length) return null;
-  const workDetails = await olWorkDetails(ranked[0].doc.key);
-  return metadataFromDoc(ranked[0].doc, workDetails);
+    .sort((a,b) => b.score - a.score)
+    .slice(0, 4);
+
+  for (const item of rankedOl){
+    const workDetails = await olWorkDetails(item.doc.key);
+    const metadata = metadataFromDoc(item.doc, workDetails);
+    candidates.push({ source:'Open Library', metadata, score:item.score });
+  }
+
+  const googleItems = googleResult.status === 'fulfilled' ? googleResult.value : [];
+  googleItems.forEach(item => {
+    const metadata = metadataFromGoogleVolume(item);
+    const score = scoreMetadataCandidate(metadata, title, author);
+    if (score >= (author ? 45 : 35)) candidates.push({ source:'Google Books', metadata, score });
+  });
+
+  candidates.sort((a,b) => b.score - a.score);
+  if (!candidates.length) return null;
+
+  const best = candidates[0].metadata;
+  const trustedMatches = candidates
+    .slice(1)
+    .filter(c => c.score >= Math.max(35, candidates[0].score - 35))
+    .map(c => c.metadata);
+  return mergeCrossReferencedMetadata(best, trustedMatches);
 }
 async function fetchMetadataFromISBN(isbn){
   const doc = await olISBN(isbn);
@@ -2104,26 +2412,61 @@ async function enrichBookMetadata(book, options = {}){
     return book;
   }
 }
-async function enrichBooksMetadata(books){
+async function enrichBooksMetadata(books, onProgress = null){
   const enriched = [];
-  for (const book of books){
-    enriched.push(await enrichBookMetadata(book));
+  for (let i = 0; i < books.length; i++){
+    if (onProgress) onProgress(i + 1, books.length, books[i]);
+    enriched.push(await enrichBookMetadata(books[i]));
   }
   return enriched;
 }
 function findCoverChoicesFromDocs(docs){
-  const seen = new Set();
   return docs.map(doc => ({
     title: englishText(doc.title) || '',
     author: englishText((doc.author_name || [])[0] || '') || '',
     year: doc.first_publish_year || '',
     coverUrl: olCoverUrl(doc) || '',
     series: pickSeriesOrCollection(doc),
-  })).filter(item => {
-    if (!item.coverUrl || seen.has(item.coverUrl)) return false;
-    seen.add(item.coverUrl);
-    return true;
-  }).slice(0, 12);
+    source: 'Open Library',
+  })).filter(item => item.coverUrl);
+}
+function findCoverChoicesFromGoogle(items){
+  return items.map(item => {
+    const meta = metadataFromGoogleVolume(item);
+    return { ...meta, source:'Google Books' };
+  }).filter(item => item.coverUrl);
+}
+function isbnCoverChoices(isbn){
+  const clean = String(isbn || '').replace(/[-\s]/g,'');
+  if (!clean) return [];
+  return ['L','M'].map(size => ({
+    title: 'ISBN cover',
+    author: '',
+    year: '',
+    coverUrl: `https://covers.openlibrary.org/b/isbn/${encodeURIComponent(clean)}-${size}.jpg`,
+    source: 'Open Library ISBN',
+  }));
+}
+async function getCoverChoices(title, author = '', isbn = ''){
+  const [olResult, googleResult] = await Promise.allSettled([
+    olTitleSearch(title, author),
+    googleBooksSearch(title, author)
+  ]);
+  const choices = [
+    ...isbnCoverChoices(isbn),
+    ...findCoverChoicesFromDocs(olResult.status === 'fulfilled' ? olResult.value : []),
+    ...findCoverChoicesFromGoogle(googleResult.status === 'fulfilled' ? googleResult.value : [])
+  ];
+  const seen = new Set();
+  return choices
+    .map(choice => ({ ...choice, score: scoreMetadataCandidate(choice, title, author) }))
+    .filter(choice => {
+      if (!choice.coverUrl || seen.has(choice.coverUrl)) return false;
+      seen.add(choice.coverUrl);
+      return true;
+    })
+    .sort((a,b) => b.score - a.score)
+    .slice(0, 18);
 }
 /* ==========================================================
    CRUD
@@ -2152,45 +2495,49 @@ function filterDuplicateBooks(books){
   }
   return { accepted, skipped };
 }
+async function persistBooks(){
+  return await storage.set(KEYS.books, state.books);
+}
 async function addBook(b){
   if (findDuplicateBook(b)){
     toast('Duplicate book ignored');
-    return { added:0, skipped:1 };
+    return { added:0, skipped:1, save:null };
   }
   state.books.unshift({ id: uid(), addedAt: Date.now(), ...b });
-  await storage.set(KEYS.books, state.books);
+  const save = await persistBooks();
   renderAll();
-  return { added:1, skipped:0 };
+  return { added:1, skipped:0, save };
 }
 async function addBooks(books){
   const { accepted, skipped } = filterDuplicateBooks(books);
   if (!accepted.length){
     renderAll();
-    return { added:0, skipped };
+    return { added:0, skipped, save:null };
   }
   const now = Date.now();
   const prepared = accepted.map((b, i) => ({ id: uid(), addedAt: now + i, ...b }));
   state.books.unshift(...prepared);
-  await storage.set(KEYS.books, state.books);
+  const save = await persistBooks();
   renderAll();
-  return { added:prepared.length, skipped };
+  return { added:prepared.length, skipped, save };
 }
 async function updateBook(id, patch){
   const i = state.books.findIndex(b => b.id === id);
-  if (i < 0) return { updated:false, duplicate:false };
+  if (i < 0) return { updated:false, duplicate:false, save:null };
   if (findDuplicateBook(patch, id)){
     toast('Duplicate book ignored');
-    return { updated:false, duplicate:true };
+    return { updated:false, duplicate:true, save:null };
   }
   state.books[i] = { ...state.books[i], ...patch };
-  await storage.set(KEYS.books, state.books);
+  const save = await persistBooks();
   renderAll();
-  return { updated:true, duplicate:false };
+  return { updated:true, duplicate:false, save };
 }
 async function deleteBook(id){
   state.books = state.books.filter(b => b.id !== id);
-  await storage.set(KEYS.books, state.books);
+  const save = await persistBooks();
   renderAll();
+  return { deleted:true, save };
 }
 
 /* ==========================================================
@@ -2265,11 +2612,12 @@ function bookCard(b){
   const statusKey = b.status || 'want';
   const statusLbl = statusKey === 'read' ? 'Finished' : statusKey === 'reading' ? 'Reading' : 'Want';
 
-  const meta = [];
-  if (b.pages) meta.push(`${b.pages} pp`);
-  if (b.year) meta.push(b.year);
-  if (b.genre) meta.push(esc(b.genre));
-  if (b.series) meta.push(esc(b.series));
+  const facts = [];
+  if (b.pages) facts.push(`${b.pages} pp`);
+  if (b.year) facts.push(b.year);
+  if (b.isbn) facts.push(`ISBN ${b.isbn}`);
+
+  const genreLine = [b.genre, b.series].filter(Boolean).map(esc).join(' · ');
 
   let dateLine = '';
   if (statusKey === 'read' && b.finishDate) dateLine = `Finished ${fmtDate(b.finishDate)}`;
@@ -2294,20 +2642,23 @@ function bookCard(b){
   return `
     <article class="project-card" data-id="${b.id}">
       <div class="cover-frame">${cover}</div>
-      <h3 class="card-title">${esc(b.title || 'Untitled')}</h3>
-      <p class="card-author">${esc(b.author || 'Unknown')}</p>
-      <div class="card-meta-row">
-        ${meta.map((m,i) => `<span>${m}</span>${i<meta.length-1?'<span class="dot-sep">·</span>':''}`).join('')}
-        ${dateLine ? `<span class="dot-sep">·</span><span>${esc(dateLine)}</span>` : ''}
-      </div>
-      <div class="card-bottom">
-        <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
-          <span class="status-pill ${statusKey}">${statusLbl}</span>
-          ${loanHtml}
-          ${metadataUpdating ? '<span class="metadata-pill">Updating metadata</span>' : ''}
+      <div class="card-content">
+        <h3 class="card-title">${esc(b.title || 'Untitled')}</h3>
+        <p class="card-author">${esc(b.author || 'Unknown')}</p>
+        <div class="card-meta-row">
+          ${facts.length ? `<div class="card-meta-line">${facts.map(esc).join(' · ')}</div>` : ''}
+          ${genreLine ? `<div class="card-meta-line wrap">${genreLine}</div>` : ''}
+          ${dateLine ? `<div class="card-meta-line">${esc(dateLine)}</div>` : ''}
         </div>
-        ${ratingHtml}
+        <div class="card-bottom">
+          <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+            <span class="status-pill ${statusKey}">${statusLbl}</span>
+            ${loanHtml}
+          </div>
+          ${ratingHtml}
+        </div>
       </div>
+      ${metadataUpdating ? '<span class="metadata-pill">Updating metadata</span>' : ''}
     </article>
   `;
 }
@@ -2702,21 +3053,30 @@ function pickFromAPI(doc){
 $('#m-save').addEventListener('click', async () => {
   const title = $('#m-title').value.trim();
   if (!title){ toast('Title required'); return; }
-  toast('Gathering metadata…');
-  const book = await enrichBookMetadata({
-    title,
-    author: $('#m-author').value.trim(),
-    pages: parseInt($('#m-pages').value) || null,
-    genre: $('#m-genre').value.trim(),
-    series: '',
-    year: parseInt($('#m-year').value) || null,
-    status: $('#m-status').value,
-    startDate: '', finishDate: '', rating: null,
-    isbn: '', coverUrl: '', notes: '', loan: null,
-  });
-  const result = await addBook(book);
-  addDialog.close();
-  toast(result.added ? 'Added' : 'Duplicate book ignored');
+  showOperationStatus('Adding book', 'Gathering metadata…', 25, 'Checking Open Library and Google Books');
+  try {
+    const book = await enrichBookMetadata({
+      title,
+      author: $('#m-author').value.trim(),
+      pages: parseInt($('#m-pages').value) || null,
+      genre: $('#m-genre').value.trim(),
+      series: '',
+      year: parseInt($('#m-year').value) || null,
+      status: $('#m-status').value,
+      startDate: '', finishDate: '', rating: null,
+      isbn: '', coverUrl: '', notes: '', loan: null,
+    });
+    updateOperationStatus('Saving to database…', 78, 'Writing book record');
+    const result = await addBook(book);
+    addDialog.close();
+    updateOperationStatus(result.added ? databaseStatusText(result.save) : 'Duplicate book ignored', 100, result.added ? 'Complete' : 'No duplicate saved');
+    toast(result.added ? 'Added' : 'Duplicate book ignored');
+    hideOperationStatus(900);
+  } catch (err){
+    updateOperationStatus('Add failed', 100, err.message || 'Unknown error');
+    toast('Add failed');
+    hideOperationStatus(1600);
+  }
 });
 
 function toIsoFinishedDate(year, month, day){
@@ -2825,14 +3185,25 @@ $('#bulk-save').addEventListener('click', async () => {
     toast('No books found');
     return;
   }
-  toast('Gathering metadata…');
-  const enrichedBooks = await enrichBooksMetadata(books);
-  const result = await addBooks(enrichedBooks);
-  addDialog.close();
-  if (result.skipped){
-    toast(`Added ${result.added} book${result.added === 1 ? '' : 's'} · ignored ${result.skipped} duplicate${result.skipped === 1 ? '' : 's'}`);
-  } else {
-    toast(`Added ${result.added} finished book${result.added === 1 ? '' : 's'}`);
+  showOperationStatus('Adding finished books', `Preparing ${books.length} book${books.length === 1 ? '' : 's'}…`, 12, 'Parsing pasted list');
+  try {
+    const enrichedBooks = await enrichBooksMetadata(books, (index, total, book) => {
+      const pct = 12 + Math.round((index / Math.max(1,total)) * 56);
+      updateOperationStatus(`Gathering metadata ${index}/${total}: ${book.title}`, pct, 'Checking Open Library and Google Books');
+    });
+    updateOperationStatus('Saving books to database…', 82, 'Writing library records');
+    const result = await addBooks(enrichedBooks);
+    addDialog.close();
+    const msg = result.skipped
+      ? `Added ${result.added} book${result.added === 1 ? '' : 's'} · ignored ${result.skipped} duplicate${result.skipped === 1 ? '' : 's'}`
+      : `Added ${result.added} finished book${result.added === 1 ? '' : 's'}`;
+    updateOperationStatus(result.added ? databaseStatusText(result.save) : 'All pasted books were duplicates', 100, result.added ? 'Complete' : 'No duplicate records saved');
+    toast(msg);
+    hideOperationStatus(1100);
+  } catch (err){
+    updateOperationStatus('Bulk add failed', 100, err.message || 'Unknown error');
+    toast('Bulk add failed');
+    hideOperationStatus(1800);
   }
 });
 
@@ -2967,11 +3338,11 @@ async function refreshDetailMetadata({ debounce = false, silent = false } = {}){
 async function findCoverOptions(){
   const title = $('#d-title').value.trim();
   const author = $('#d-author').value.trim();
-  if (!title){ toast('Title required'); return; }
+  const isbn = $('#d-isbn').value.trim();
+  if (!title && !isbn){ toast('Title or ISBN required'); return; }
   setDetailMetadataStatus('Finding covers…');
   try {
-    const docs = await olTitleSearch(title, author);
-    const choices = findCoverChoicesFromDocs(docs);
+    const choices = await getCoverChoices(title, author, isbn);
     const box = $('#cover-results');
     if (!choices.length){
       box.style.display = 'none';
@@ -2980,7 +3351,7 @@ async function findCoverOptions(){
       return;
     }
     box.innerHTML = choices.map((choice, i) => `
-      <button class="cover-choice ${choice.coverUrl === $('#d-cover-url').value ? 'active' : ''}" data-cover="${esc(choice.coverUrl)}" title="${esc([choice.title, choice.author, choice.year].filter(Boolean).join(' · '))}" type="button">
+      <button class="cover-choice ${choice.coverUrl === $('#d-cover-url').value ? 'active' : ''}" data-cover="${esc(choice.coverUrl)}" title="${esc([choice.source, choice.title, choice.author, choice.year].filter(Boolean).join(' · '))}" type="button">
         <img src="${esc(choice.coverUrl)}" alt="Book cover option">
       </button>`).join('');
     box.style.display = '';
@@ -3010,13 +3381,28 @@ $('#d-cover-url').addEventListener('input', e => setDetailCover(e.target.value.t
 $('#d-cover-search').addEventListener('click', findCoverOptions);
 
 $('#d-save').addEventListener('click', async () => {
-  if (detailDialog._metadataQueryDirty) await refreshDetailMetadata({ silent:true });
-  const data = bookFromDetail();
-  if (!data.title){ toast('Title required'); return; }
-  const result = state.editingId ? await updateBook(state.editingId, data) : await addBook(data);
-  if (result?.duplicate) return;
-  detailDialog.close();
-  toast(result?.skipped ? 'Duplicate book ignored' : 'Saved');
+  const isNew = !state.editingId;
+  showOperationStatus(isNew ? 'Adding book' : 'Saving book', detailDialog._metadataQueryDirty ? 'Updating metadata…' : 'Saving to database…', detailDialog._metadataQueryDirty ? 35 : 70, detailDialog._metadataQueryDirty ? 'Checking book sources' : 'Writing book record');
+  try {
+    if (detailDialog._metadataQueryDirty) await refreshDetailMetadata({ silent:true });
+    const data = bookFromDetail();
+    if (!data.title){ hideOperationStatus(); toast('Title required'); return; }
+    updateOperationStatus('Saving to database…', 78, 'Writing book record');
+    const result = state.editingId ? await updateBook(state.editingId, data) : await addBook(data);
+    if (result?.duplicate){
+      updateOperationStatus('Duplicate book ignored', 100, 'No duplicate saved');
+      hideOperationStatus(900);
+      return;
+    }
+    detailDialog.close();
+    updateOperationStatus(databaseStatusText(result?.save), 100, 'Complete');
+    toast(result?.skipped ? 'Duplicate book ignored' : 'Saved');
+    hideOperationStatus(900);
+  } catch (err){
+    updateOperationStatus('Save failed', 100, err.message || 'Unknown error');
+    toast('Save failed');
+    hideOperationStatus(1600);
+  }
 });
 
 $('#d-delete').addEventListener('click', async () => {

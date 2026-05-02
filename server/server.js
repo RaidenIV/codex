@@ -64,16 +64,27 @@ async function getStore(clientKey) {
   return store;
 }
 
+function responseMeta() {
+  return { mongoReady, mode: mongoReady ? 'mongodb' : 'memory' };
+}
+
 async function saveStore(store, patch) {
+  const updatedAt = new Date();
   if (!mongoReady) {
-    Object.assign(store, patch, { updatedAt: new Date() });
+    Object.assign(store, patch, { updatedAt });
     memoryStores.set(store.clientKey, store);
     return store;
   }
 
-  Object.assign(store, patch);
-  await store.save();
-  return store;
+  const update = { $set: { ...patch, updatedAt }, $setOnInsert: { createdAt: store.createdAt || new Date() } };
+  const saved = await CodexStore.findOneAndUpdate(
+    { clientKey: store.clientKey },
+    update,
+    { new: true, upsert: true, lean: false }
+  );
+  const savedObject = saved && typeof saved.toObject === 'function' ? saved.toObject() : saved;
+  if (savedObject) Object.assign(store, savedObject);
+  return saved;
 }
 
 async function connectMongo() {
@@ -94,13 +105,13 @@ async function connectMongo() {
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'codex-backend', mongoReady, mode: mongoReady ? 'mongodb' : 'memory' });
+  res.json({ ok: true, service: 'codex-backend', ...responseMeta() });
 });
 
 app.get('/api/data', async (req, res, next) => {
   try {
     const store = await getStore(clientKeyFromRequest(req));
-    res.json({ books: store.books || [], prefs: store.prefs || null, updatedAt: store.updatedAt });
+    res.json({ books: store.books || [], prefs: store.prefs || null, updatedAt: store.updatedAt, ...responseMeta() });
   } catch (err) { next(err); }
 });
 
@@ -110,14 +121,14 @@ app.put('/api/data', async (req, res, next) => {
     const prefs = req.body.prefs && typeof req.body.prefs === 'object' ? req.body.prefs : null;
     const store = await getStore(clientKeyFromRequest(req));
     await saveStore(store, { books, prefs });
-    res.json({ ok: true, books: store.books || [], prefs: store.prefs || null, updatedAt: store.updatedAt });
+    res.json({ ok: true, books: store.books || [], prefs: store.prefs || null, updatedAt: store.updatedAt, ...responseMeta() });
   } catch (err) { next(err); }
 });
 
 app.get('/api/books', async (req, res, next) => {
   try {
     const store = await getStore(clientKeyFromRequest(req));
-    res.json({ books: store.books || [] });
+    res.json({ books: store.books || [], ...responseMeta() });
   } catch (err) { next(err); }
 });
 
@@ -126,7 +137,7 @@ app.put('/api/books', async (req, res, next) => {
     if (!Array.isArray(req.body.books)) return res.status(400).json({ error: 'books must be an array' });
     const store = await getStore(clientKeyFromRequest(req));
     await saveStore(store, { books: req.body.books });
-    res.json({ ok: true, books: store.books || [], updatedAt: store.updatedAt });
+    res.json({ ok: true, books: store.books || [], updatedAt: store.updatedAt, ...responseMeta() });
   } catch (err) { next(err); }
 });
 
@@ -137,7 +148,7 @@ app.post('/api/books', async (req, res, next) => {
     const store = await getStore(clientKeyFromRequest(req));
     const books = [book, ...(store.books || [])];
     await saveStore(store, { books });
-    res.status(201).json({ ok: true, book, books: store.books || [], updatedAt: store.updatedAt });
+    res.status(201).json({ ok: true, book, books: store.books || [], updatedAt: store.updatedAt, ...responseMeta() });
   } catch (err) { next(err); }
 });
 
@@ -149,7 +160,7 @@ app.put('/api/books/:id', async (req, res, next) => {
     if (index < 0) return res.status(404).json({ error: 'Book not found' });
     books[index] = { ...books[index], ...(req.body.book || req.body) };
     await saveStore(store, { books });
-    res.json({ ok: true, book: books[index], books: store.books || [], updatedAt: store.updatedAt });
+    res.json({ ok: true, book: books[index], books: store.books || [], updatedAt: store.updatedAt, ...responseMeta() });
   } catch (err) { next(err); }
 });
 
@@ -158,14 +169,14 @@ app.delete('/api/books/:id', async (req, res, next) => {
     const store = await getStore(clientKeyFromRequest(req));
     const books = (store.books || []).filter(book => String(book.id) !== String(req.params.id));
     await saveStore(store, { books });
-    res.json({ ok: true, books: store.books || [], updatedAt: store.updatedAt });
+    res.json({ ok: true, books: store.books || [], updatedAt: store.updatedAt, ...responseMeta() });
   } catch (err) { next(err); }
 });
 
 app.get('/api/prefs', async (req, res, next) => {
   try {
     const store = await getStore(clientKeyFromRequest(req));
-    res.json({ prefs: store.prefs || null });
+    res.json({ prefs: store.prefs || null, ...responseMeta() });
   } catch (err) { next(err); }
 });
 
@@ -174,7 +185,7 @@ app.put('/api/prefs', async (req, res, next) => {
     if (req.body.prefs && typeof req.body.prefs !== 'object') return res.status(400).json({ error: 'prefs must be an object' });
     const store = await getStore(clientKeyFromRequest(req));
     await saveStore(store, { prefs: req.body.prefs || null });
-    res.json({ ok: true, prefs: store.prefs || null, updatedAt: store.updatedAt });
+    res.json({ ok: true, prefs: store.prefs || null, updatedAt: store.updatedAt, ...responseMeta() });
   } catch (err) { next(err); }
 });
 
