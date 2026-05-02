@@ -1018,6 +1018,33 @@ body[data-theme="blueprint-light"] .cover-frame{
 .status-pill.read{color:#5dd6a0;border-color:rgba(93,214,160,.4)}
 .status-pill.reading{color:#f0b056;border-color:rgba(240,176,86,.4)}
 .status-pill.want{color:var(--muted);border-color:var(--line)}
+.metadata-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:.35rem;
+  padding:.22rem .55rem;
+  border-radius:var(--radius-pill);
+  border:1px solid var(--accent-ring);
+  color:var(--accent);
+  font-family:var(--font-mono);
+  font-size:.58rem;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  background:rgba(var(--accent-rgb),.10);
+}
+.metadata-pill::before{
+  content:'';
+  width:.38rem;
+  height:.38rem;
+  border-radius:999px;
+  background:currentColor;
+  box-shadow:0 0 10px var(--accent-glow);
+  animation:metadataPulse 1s ease-in-out infinite;
+}
+@keyframes metadataPulse{
+  0%,100%{opacity:.35;transform:scale(.85)}
+  50%{opacity:1;transform:scale(1)}
+}
 .loan-pill{
   display:inline-flex;
   align-items:center;
@@ -1268,6 +1295,31 @@ body[data-theme="blueprint-dark"] .detail-cover,
 body[data-theme="blueprint-light"] .detail-cover{
   border:none;box-shadow:var(--shadow-inset);
 }
+
+.cover-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.5rem;align-items:center}
+.cover-results{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(58px,1fr));
+  gap:.55rem;
+  margin-top:.55rem;
+  max-height:190px;
+  overflow-y:auto;
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  padding:.55rem;
+  background:var(--inset);
+}
+.cover-choice{
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  background:var(--surface);
+  padding:.25rem;
+  cursor:pointer;
+  transition:border-color .14s, box-shadow .14s, transform .14s;
+}
+.cover-choice:hover,.cover-choice.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-ring)}
+.cover-choice img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:calc(var(--radius-sm) - 4px);display:block;background:var(--inset)}
+.metadata-status{font-size:.78rem;color:var(--muted-2);padding:.35rem 0 0}
 
 /* Toast */
 .toast{
@@ -1595,6 +1647,7 @@ body.control-panel-is-collapsed .add-book-wrap .btn{padding:0;width:var(--icon-b
           <div class="field"><label>Year</label><input type="number" class="input" id="d-year"></div>
         </div>
         <div class="field"><label>Genre</label><input type="text" class="input" id="d-genre"></div>
+        <div class="field"><label>Series / Collection</label><input type="text" class="input" id="d-series"></div>
       </div>
     </div>
 
@@ -1613,6 +1666,16 @@ body.control-panel-is-collapsed .add-book-wrap .btn{padding:0;width:var(--icon-b
     <div class="row2">
       <div class="field"><label>Rating (1–5)</label><input type="number" class="input" id="d-rating" min="1" max="5"></div>
       <div class="field"><label>ISBN</label><input type="text" class="input" id="d-isbn"></div>
+    </div>
+
+    <div class="field">
+      <label>Cover Image</label>
+      <div class="cover-tools">
+        <input type="url" class="input" id="d-cover-url" placeholder="Cover image URL">
+        <button class="btn small" id="d-cover-search" type="button">Find Covers</button>
+      </div>
+      <div class="metadata-status" id="d-meta-status" style="display:none"></div>
+      <div class="cover-results" id="cover-results" style="display:none"></div>
     </div>
 
     <div class="field">
@@ -1829,6 +1892,7 @@ const state = {
   search: '',
   sort: 'recent',
   editingId: null,
+  metadataUpdatingIds: new Set(),
 };
 
 const PALETTE = ['#ff8a00','#0099ff','#9fe6b8','#b18cff','#ff6b7e','#f0b056','#5dd6a0','#7dd3fc'];
@@ -1855,16 +1919,28 @@ function toast(msg){
    OPEN LIBRARY API (unchanged from prior version)
    ========================================================== */
 async function olSearch(q){
-  const url = `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=10&fields=title,author_name,first_publish_year,isbn,cover_i,number_of_pages_median,subject,key`;
+  const url = `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&language=eng&limit=10&fields=title,author_name,first_publish_year,isbn,cover_i,number_of_pages_median,subject,key,language,series,publisher,edition_count`;
   const r = await fetch(url);
   if (!r.ok) throw new Error('Search failed');
   return (await r.json()).docs || [];
 }
-async function olTitleSearch(title){
-  const url = `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&limit=8&fields=title,author_name,first_publish_year,isbn,cover_i,number_of_pages_median,subject,key`;
-  const r = await fetch(url);
+async function olTitleSearch(title, author = ''){
+  const fields = 'title,author_name,first_publish_year,isbn,cover_i,number_of_pages_median,subject,key,language,series,publisher,edition_count';
+  const buildUrl = (includeLanguage = true) => {
+    const params = new URLSearchParams({ title, limit:'12', fields });
+    if (author) params.set('author', author);
+    if (includeLanguage) params.set('language', 'eng');
+    return `https://openlibrary.org/search.json?${params.toString()}`;
+  };
+  let r = await fetch(buildUrl(true));
   if (!r.ok) throw new Error('Metadata lookup failed');
-  return (await r.json()).docs || [];
+  let docs = (await r.json()).docs || [];
+  if (!docs.length && author){
+    r = await fetch(buildUrl(false));
+    if (!r.ok) throw new Error('Metadata lookup failed');
+    docs = (await r.json()).docs || [];
+  }
+  return docs;
 }
 async function olISBN(isbn){
   const clean = isbn.replace(/[-\s]/g,'');
@@ -1882,20 +1958,53 @@ async function olISBN(isbn){
     number_of_pages_median: book.number_of_pages,
     subject: (book.subjects||[]).map(s=>s.name),
     cover: book.cover,
+    language: ['eng'],
   };
 }
+async function olWorkDetails(key){
+  if (!key || !key.startsWith('/works/')) return null;
+  try {
+    const r = await fetch(`https://openlibrary.org${key}.json`);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
 function olCoverUrl(doc){
+  if (doc.coverUrl) return doc.coverUrl;
   if (doc.cover && doc.cover.medium) return doc.cover.medium;
   if (doc.cover_i) return `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
   if (doc.isbn && doc.isbn[0]) return `https://covers.openlibrary.org/b/isbn/${doc.isbn[0]}-L.jpg`;
   return null;
 }
+function isMostlyEnglishText(value){
+  const s = String(value || '').trim();
+  if (!s) return false;
+  const letters = s.match(/[A-Za-z]/g)?.length || 0;
+  const nonLatin = s.match(/[^\x00-\x7F]/g)?.length || 0;
+  return letters > 0 && nonLatin <= Math.max(2, Math.floor(s.length * 0.08));
+}
+function englishText(value){
+  const s = String(value || '').trim();
+  return isMostlyEnglishText(s) ? s : '';
+}
 function pickGenre(subjects){
   if (!subjects || !subjects.length) return '';
+  const blocked = /fictional|protected daisy|accessible book|internet archive|open library|large type|juvenile|translations/i;
   const clean = subjects
     .map(s => typeof s === 'string' ? s : (s?.name ?? ''))
-    .filter(s => s && !s.includes(':') && s.length < 40);
-  return (clean[0] || subjects[0] || '').toString();
+    .map(englishText)
+    .filter(Boolean)
+    .filter(s => !s.includes(':') && s.length < 42 && !blocked.test(s));
+  return clean[0] || '';
+}
+function pickSeriesOrCollection(doc, workDetails = null){
+  const direct = [doc?.series, workDetails?.series].flat().filter(Boolean).map(englishText).filter(Boolean);
+  if (direct.length) return direct[0];
+  const subjects = [doc?.subject, workDetails?.subjects].flat().filter(Boolean).map(englishText).filter(Boolean);
+  const seriesLike = subjects.find(s => /(series|collection|cycle|saga|trilogy|cantos|chronicles|universe|novels)/i.test(s));
+  return seriesLike || '';
 }
 function normalizeMetadataTitle(title){
   return String(title || '')
@@ -1904,7 +2013,13 @@ function normalizeMetadataTitle(title){
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
-function metadataScore(doc, title){
+function normalizeAuthor(author){
+  return String(author || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+function metadataScore(doc, title, author = ''){
   const wanted = normalizeMetadataTitle(title);
   const found = normalizeMetadataTitle(doc?.title || '');
   if (!wanted || !found) return 0;
@@ -1918,48 +2033,73 @@ function metadataScore(doc, title){
     const overlap = foundWords.filter(w => wantedWords.has(w)).length;
     score += overlap * 8;
   }
-  if ((doc.author_name || []).length) score += 12;
+  const wantedAuthor = normalizeAuthor(author);
+  const authors = (doc.author_name || []).map(normalizeAuthor).filter(Boolean);
+  if (authors.length) score += 12;
+  if (wantedAuthor){
+    const exactAuthor = authors.some(a => a === wantedAuthor);
+    const looseAuthor = authors.some(a => a.includes(wantedAuthor) || wantedAuthor.includes(a));
+    if (exactAuthor) score += 90;
+    else if (looseAuthor) score += 55;
+    else score -= 45;
+  }
+  const languages = doc.language || [];
+  if (languages.includes('eng')) score += 18;
   if (doc.cover_i || (doc.isbn || []).length) score += 10;
   if (doc.number_of_pages_median) score += 6;
   if ((doc.subject || []).length) score += 6;
   if (doc.first_publish_year) score += 4;
+  if (doc.series) score += 4;
   return score;
 }
-function metadataFromDoc(doc){
+function metadataFromDoc(doc, workDetails = null){
   return {
-    author: (doc.author_name || [])[0] || '',
+    title: englishText(doc.title) || '',
+    author: englishText((doc.author_name || [])[0] || '') || '',
     pages: doc.number_of_pages_median || null,
-    genre: pickGenre(doc.subject),
+    genre: pickGenre([doc.subject, workDetails?.subjects].flat().filter(Boolean)),
     year: doc.first_publish_year || null,
     isbn: (doc.isbn || [])[0] || '',
     coverUrl: olCoverUrl(doc) || '',
+    series: pickSeriesOrCollection(doc, workDetails),
+    metadataUpdatedAt: Date.now(),
   };
 }
-async function fetchBookMetadata(title){
-  const docs = await olTitleSearch(title);
+async function fetchBookMetadata(title, author = ''){
+  const docs = await olTitleSearch(title, author);
   const ranked = docs
-    .map(doc => ({ doc, score: metadataScore(doc, title) }))
-    .filter(item => item.score >= 35)
+    .map(doc => ({ doc, score: metadataScore(doc, title, author) }))
+    .filter(item => item.score >= (author ? 45 : 35))
     .sort((a,b) => b.score - a.score);
-  return ranked.length ? metadataFromDoc(ranked[0].doc) : null;
+  if (!ranked.length) return null;
+  const workDetails = await olWorkDetails(ranked[0].doc.key);
+  return metadataFromDoc(ranked[0].doc, workDetails);
 }
-function mergeMetadata(book, metadata){
+async function fetchMetadataFromISBN(isbn){
+  const doc = await olISBN(isbn);
+  return doc ? metadataFromDoc(doc) : null;
+}
+function mergeMetadata(book, metadata, options = {}){
   if (!metadata) return book;
+  const overwrite = !!options.overwrite;
   return {
     ...book,
+    title: book.title || metadata.title || '',
     author: book.author || metadata.author || '',
-    pages: book.pages || metadata.pages || null,
-    genre: book.genre || metadata.genre || '',
-    year: book.year || metadata.year || null,
-    isbn: book.isbn || metadata.isbn || '',
-    coverUrl: book.coverUrl || metadata.coverUrl || '',
+    pages: overwrite ? (metadata.pages || book.pages || null) : (book.pages || metadata.pages || null),
+    genre: overwrite ? (metadata.genre || book.genre || '') : (book.genre || metadata.genre || ''),
+    year: overwrite ? (metadata.year || book.year || null) : (book.year || metadata.year || null),
+    isbn: overwrite ? (metadata.isbn || book.isbn || '') : (book.isbn || metadata.isbn || ''),
+    coverUrl: overwrite ? (metadata.coverUrl || book.coverUrl || '') : (book.coverUrl || metadata.coverUrl || ''),
+    series: overwrite ? (metadata.series || book.series || '') : (book.series || metadata.series || ''),
+    metadataUpdatedAt: metadata.metadataUpdatedAt || Date.now(),
   };
 }
-async function enrichBookMetadata(book){
+async function enrichBookMetadata(book, options = {}){
   if (!book?.title) return book;
   try {
-    const metadata = await fetchBookMetadata(book.title);
-    return mergeMetadata(book, metadata);
+    const metadata = book.isbn ? await fetchMetadataFromISBN(book.isbn) : await fetchBookMetadata(book.title, book.author || '');
+    return mergeMetadata(book, metadata, options);
   } catch {
     return book;
   }
@@ -1971,28 +2111,81 @@ async function enrichBooksMetadata(books){
   }
   return enriched;
 }
-
+function findCoverChoicesFromDocs(docs){
+  const seen = new Set();
+  return docs.map(doc => ({
+    title: englishText(doc.title) || '',
+    author: englishText((doc.author_name || [])[0] || '') || '',
+    year: doc.first_publish_year || '',
+    coverUrl: olCoverUrl(doc) || '',
+    series: pickSeriesOrCollection(doc),
+  })).filter(item => {
+    if (!item.coverUrl || seen.has(item.coverUrl)) return false;
+    seen.add(item.coverUrl);
+    return true;
+  }).slice(0, 12);
+}
 /* ==========================================================
    CRUD
    ========================================================== */
+function booksAreDuplicates(a, b){
+  const at = normalizeMetadataTitle(a?.title);
+  const bt = normalizeMetadataTitle(b?.title);
+  if (!at || !bt || at !== bt) return false;
+  const aa = normalizeAuthor(a?.author);
+  const ba = normalizeAuthor(b?.author);
+  if (aa && ba) return aa === ba;
+  return true;
+}
+function findDuplicateBook(book, ignoreId = null, list = state.books){
+  return list.find(existing => existing.id !== ignoreId && booksAreDuplicates(existing, book));
+}
+function filterDuplicateBooks(books){
+  const accepted = [];
+  let skipped = 0;
+  for (const book of books){
+    if (findDuplicateBook(book, null, state.books) || findDuplicateBook(book, null, accepted)){
+      skipped++;
+      continue;
+    }
+    accepted.push(book);
+  }
+  return { accepted, skipped };
+}
 async function addBook(b){
+  if (findDuplicateBook(b)){
+    toast('Duplicate book ignored');
+    return { added:0, skipped:1 };
+  }
   state.books.unshift({ id: uid(), addedAt: Date.now(), ...b });
   await storage.set(KEYS.books, state.books);
   renderAll();
+  return { added:1, skipped:0 };
 }
 async function addBooks(books){
+  const { accepted, skipped } = filterDuplicateBooks(books);
+  if (!accepted.length){
+    renderAll();
+    return { added:0, skipped };
+  }
   const now = Date.now();
-  const prepared = books.map((b, i) => ({ id: uid(), addedAt: now + i, ...b }));
+  const prepared = accepted.map((b, i) => ({ id: uid(), addedAt: now + i, ...b }));
   state.books.unshift(...prepared);
   await storage.set(KEYS.books, state.books);
   renderAll();
+  return { added:prepared.length, skipped };
 }
 async function updateBook(id, patch){
   const i = state.books.findIndex(b => b.id === id);
-  if (i < 0) return;
+  if (i < 0) return { updated:false, duplicate:false };
+  if (findDuplicateBook(patch, id)){
+    toast('Duplicate book ignored');
+    return { updated:false, duplicate:true };
+  }
   state.books[i] = { ...state.books[i], ...patch };
   await storage.set(KEYS.books, state.books);
   renderAll();
+  return { updated:true, duplicate:false };
 }
 async function deleteBook(id){
   state.books = state.books.filter(b => b.id !== id);
@@ -2076,6 +2269,7 @@ function bookCard(b){
   if (b.pages) meta.push(`${b.pages} pp`);
   if (b.year) meta.push(b.year);
   if (b.genre) meta.push(esc(b.genre));
+  if (b.series) meta.push(esc(b.series));
 
   let dateLine = '';
   if (statusKey === 'read' && b.finishDate) dateLine = `Finished ${fmtDate(b.finishDate)}`;
@@ -2088,6 +2282,8 @@ function bookCard(b){
   } else {
     ratingHtml = '<div></div>';
   }
+
+  const metadataUpdating = b.id && state.metadataUpdatingIds.has(b.id);
 
   let loanHtml = '';
   if (b.loan){
@@ -2108,6 +2304,7 @@ function bookCard(b){
         <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
           <span class="status-pill ${statusKey}">${statusLbl}</span>
           ${loanHtml}
+          ${metadataUpdating ? '<span class="metadata-pill">Updating metadata</span>' : ''}
         </div>
         ${ratingHtml}
       </div>
@@ -2492,6 +2689,7 @@ function pickFromAPI(doc){
     author: (doc.author_name||[])[0] || '',
     pages: doc.number_of_pages_median || '',
     genre: pickGenre(doc.subject),
+    series: pickSeriesOrCollection(doc),
     year: doc.first_publish_year || '',
     isbn: (doc.isbn||[])[0] || '',
     coverUrl: olCoverUrl(doc) || '',
@@ -2510,14 +2708,15 @@ $('#m-save').addEventListener('click', async () => {
     author: $('#m-author').value.trim(),
     pages: parseInt($('#m-pages').value) || null,
     genre: $('#m-genre').value.trim(),
+    series: '',
     year: parseInt($('#m-year').value) || null,
     status: $('#m-status').value,
     startDate: '', finishDate: '', rating: null,
     isbn: '', coverUrl: '', notes: '', loan: null,
   });
-  await addBook(book);
+  const result = await addBook(book);
   addDialog.close();
-  toast('Added');
+  toast(result.added ? 'Added' : 'Duplicate book ignored');
 });
 
 function toIsoFinishedDate(year, month, day){
@@ -2581,6 +2780,7 @@ function parseBulkFinishedBooks(text){
       author: '',
       pages: null,
       genre: '',
+      series: '',
       year: null,
       status: 'read',
       startDate: '',
@@ -2627,9 +2827,13 @@ $('#bulk-save').addEventListener('click', async () => {
   }
   toast('Gathering metadata…');
   const enrichedBooks = await enrichBooksMetadata(books);
-  await addBooks(enrichedBooks);
+  const result = await addBooks(enrichedBooks);
   addDialog.close();
-  toast(`Added ${books.length} finished book${books.length === 1 ? '' : 's'}`);
+  if (result.skipped){
+    toast(`Added ${result.added} book${result.added === 1 ? '' : 's'} · ignored ${result.skipped} duplicate${result.skipped === 1 ? '' : 's'}`);
+  } else {
+    toast(`Added ${result.added} finished book${result.added === 1 ? '' : 's'}`);
+  }
 });
 
 /* ==========================================================
@@ -2645,11 +2849,17 @@ function openDetail(b){
   $('#d-pages').value = b.pages || '';
   $('#d-year').value = b.year || '';
   $('#d-genre').value = b.genre || '';
+  $('#d-series').value = b.series || '';
   $('#d-status').value = b.status || 'want';
   $('#d-start').value = b.startDate || '';
   $('#d-finish').value = b.finishDate || '';
   $('#d-rating').value = b.rating || '';
   $('#d-isbn').value = b.isbn || '';
+  $('#d-cover-url').value = b.coverUrl || '';
+  $('#cover-results').style.display = 'none';
+  $('#cover-results').innerHTML = '';
+  $('#d-meta-status').style.display = 'none';
+  $('#d-meta-status').textContent = '';
   $('#d-loan-type').value = b.loan?.type || '';
   $('#d-loan-person').value = b.loan?.person || '';
   $('#d-loan-date').value = b.loan?.date || '';
@@ -2660,6 +2870,8 @@ function openDetail(b){
     : esc((b.title||'').slice(0,30));
   $('#d-delete').style.display = b.id ? '' : 'none';
   detailDialog._currentCover = b.coverUrl || '';
+  detailDialog._manualCoverChanged = false;
+  detailDialog._metadataQueryDirty = false;
   detailDialog.showModal();
 }
 
@@ -2671,12 +2883,13 @@ function bookFromDetail(){
     pages: parseInt($('#d-pages').value) || null,
     year: parseInt($('#d-year').value) || null,
     genre: $('#d-genre').value.trim(),
+    series: $('#d-series').value.trim(),
     status: $('#d-status').value,
     startDate: $('#d-start').value || '',
     finishDate: $('#d-finish').value || '',
     rating: parseInt($('#d-rating').value) || null,
     isbn: $('#d-isbn').value.trim(),
-    coverUrl: detailDialog._currentCover || '',
+    coverUrl: $('#d-cover-url').value.trim() || detailDialog._currentCover || '',
     notes: $('#d-notes').value,
     loan: loanType ? {
       type: loanType,
@@ -2686,13 +2899,124 @@ function bookFromDetail(){
   };
 }
 
+function setDetailCover(url, manual = false){
+  detailDialog._currentCover = url || '';
+  if (manual) detailDialog._manualCoverChanged = true;
+  $('#d-cover-url').value = url || '';
+  const cv = $('#d-cover');
+  cv.innerHTML = url
+    ? `<img src="${esc(url)}" onerror="this.style.display='none'">`
+    : esc(($('#d-title').value || '').slice(0,30));
+}
+function setDetailMetadataStatus(text, visible = true){
+  const el = $('#d-meta-status');
+  el.textContent = text || '';
+  el.style.display = visible && text ? '' : 'none';
+}
+function setCardMetadataUpdating(id, isUpdating){
+  if (!id) return;
+  if (isUpdating) state.metadataUpdatingIds.add(id);
+  else state.metadataUpdatingIds.delete(id);
+  renderAll();
+}
+function applyMetadataToDetail(metadata, overwrite = true){
+  if (!metadata) return;
+  if (!$('#d-author').value.trim() && metadata.author) $('#d-author').value = metadata.author;
+  if (overwrite || !$('#d-pages').value) $('#d-pages').value = metadata.pages || $('#d-pages').value || '';
+  if (overwrite || !$('#d-year').value) $('#d-year').value = metadata.year || $('#d-year').value || '';
+  if (overwrite || !$('#d-genre').value) $('#d-genre').value = metadata.genre || $('#d-genre').value || '';
+  if (overwrite || !$('#d-isbn').value) $('#d-isbn').value = metadata.isbn || $('#d-isbn').value || '';
+  if (overwrite || !$('#d-series').value) $('#d-series').value = metadata.series || $('#d-series').value || '';
+  if ((overwrite || !$('#d-cover-url').value) && metadata.coverUrl && !detailDialog._manualCoverChanged) setDetailCover(metadata.coverUrl);
+}
+let detailMetadataTimer = null;
+let detailMetadataToken = 0;
+async function refreshDetailMetadata({ debounce = false, silent = false } = {}){
+  clearTimeout(detailMetadataTimer);
+  const run = async () => {
+    const title = $('#d-title').value.trim();
+    const author = $('#d-author').value.trim();
+    const isbn = $('#d-isbn').value.trim();
+    if (!title && !isbn) return;
+    const token = ++detailMetadataToken;
+    const editingId = state.editingId;
+    if (!silent) setDetailMetadataStatus('Updating metadata…');
+    setCardMetadataUpdating(editingId, true);
+    try {
+      const metadata = isbn ? await fetchMetadataFromISBN(isbn) : await fetchBookMetadata(title, author);
+      if (token !== detailMetadataToken) return;
+      if (metadata){
+        applyMetadataToDetail(metadata, true);
+        if (!silent) setDetailMetadataStatus('Metadata updated');
+      } else if (!silent){
+        setDetailMetadataStatus('No matching English metadata found');
+      }
+      detailDialog._metadataQueryDirty = false;
+    } catch {
+      if (!silent) setDetailMetadataStatus('Metadata update failed');
+    } finally {
+      if (token === detailMetadataToken){
+        setCardMetadataUpdating(editingId, false);
+        if (!silent) setTimeout(() => setDetailMetadataStatus('', false), 1800);
+      }
+    }
+  };
+  if (debounce) detailMetadataTimer = setTimeout(run, 650);
+  else await run();
+}
+async function findCoverOptions(){
+  const title = $('#d-title').value.trim();
+  const author = $('#d-author').value.trim();
+  if (!title){ toast('Title required'); return; }
+  setDetailMetadataStatus('Finding covers…');
+  try {
+    const docs = await olTitleSearch(title, author);
+    const choices = findCoverChoicesFromDocs(docs);
+    const box = $('#cover-results');
+    if (!choices.length){
+      box.style.display = 'none';
+      box.innerHTML = '';
+      setDetailMetadataStatus('No covers found');
+      return;
+    }
+    box.innerHTML = choices.map((choice, i) => `
+      <button class="cover-choice ${choice.coverUrl === $('#d-cover-url').value ? 'active' : ''}" data-cover="${esc(choice.coverUrl)}" title="${esc([choice.title, choice.author, choice.year].filter(Boolean).join(' · '))}" type="button">
+        <img src="${esc(choice.coverUrl)}" alt="Book cover option">
+      </button>`).join('');
+    box.style.display = '';
+    box.querySelectorAll('.cover-choice').forEach(btn => {
+      btn.addEventListener('click', () => {
+        box.querySelectorAll('.cover-choice').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        setDetailCover(btn.dataset.cover, true);
+      });
+    });
+    setDetailMetadataStatus('Choose a cover below');
+  } catch {
+    setDetailMetadataStatus('Cover search failed');
+  }
+}
+['d-title','d-author'].forEach(id => {
+  $('#'+id).addEventListener('input', () => {
+    detailDialog._metadataQueryDirty = true;
+    refreshDetailMetadata({ debounce:true });
+  });
+});
+$('#d-isbn').addEventListener('change', () => {
+  detailDialog._metadataQueryDirty = true;
+  refreshDetailMetadata();
+});
+$('#d-cover-url').addEventListener('input', e => setDetailCover(e.target.value.trim(), true));
+$('#d-cover-search').addEventListener('click', findCoverOptions);
+
 $('#d-save').addEventListener('click', async () => {
+  if (detailDialog._metadataQueryDirty) await refreshDetailMetadata({ silent:true });
   const data = bookFromDetail();
   if (!data.title){ toast('Title required'); return; }
-  if (state.editingId) await updateBook(state.editingId, data);
-  else await addBook(data);
+  const result = state.editingId ? await updateBook(state.editingId, data) : await addBook(data);
+  if (result?.duplicate) return;
   detailDialog.close();
-  toast('Saved');
+  toast(result?.skipped ? 'Duplicate book ignored' : 'Saved');
 });
 
 $('#d-delete').addEventListener('click', async () => {
@@ -2727,7 +3051,7 @@ function exportJSON(){
   toast('Exported JSON');
 }
 function exportCSV(){
-  const cols = ['title','author','pages','year','genre','status','startDate','finishDate','rating','isbn','notes','loanType','loanPerson','loanDate'];
+  const cols = ['title','author','pages','year','genre','series','status','startDate','finishDate','rating','isbn','notes','loanType','loanPerson','loanDate'];
   const escCSV = v => {
     const s = String(v ?? '');
     return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
